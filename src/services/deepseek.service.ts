@@ -5,7 +5,7 @@ const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
 export async function callDeepSeek(prompt: string): Promise<string> {
   try {
     const response = await axios.post(
-      "https://api.deepseek.com/v1/chat/completions",
+      "https://api.deepseek.com/chat/completions",
       {
         model: "deepseek-chat", // or whatever model you're using
         messages: [
@@ -15,7 +15,7 @@ export async function callDeepSeek(prompt: string): Promise<string> {
       },
       {
         headers: {
-          "Authorization": `Bearer ${deepseekApiKey}`,
+          "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`,
           "Content-Type": "application/json"
         }
       }
