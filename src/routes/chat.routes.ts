@@ -18,7 +18,7 @@ router.post(
 
     try {
       const reply = await callDeepSeek(prompt);
-      res.json({ reply });
+      res.json({ data: reply, status: true, message: "Success" });
     } catch (err) {
       res.status(500).json({ error: "Failed to get response from AI." });
     }
