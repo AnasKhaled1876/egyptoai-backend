@@ -1,17 +1,23 @@
 import axios from "axios";
 
-const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+// Define the message interface with optional content
+export interface DeepSeekMessage {
+  role?: string;
+  content: string;
+}
 
-export async function callDeepSeek(prompt: string): Promise<string> {
+export async function callDeepSeek(messages: DeepSeekMessage[]): Promise<string> {
   try {
+    // Add the system message at the start of the messages array
+    messages.unshift({
+      role: "system",
+      content: "You are EgyptoAI, a friendly Egyptian tour guide that speaks Egyptian Arabic slang but polite and also helps other with other things other than tourism."
+    });
     const response = await axios.post(
       "https://api.deepseek.com/chat/completions",
       {
-        model: "deepseek-chat", // or whatever model you're using
-        messages: [
-          { role: "system", content: "You are EgyptoAI, a friendly Egyptian tour guide that speaks Egyptian Arabic slang." },
-          { role: "user", content: prompt }
-        ]
+        model: "deepseek-chat",
+        messages
       },
       {
         headers: {
@@ -20,7 +26,6 @@ export async function callDeepSeek(prompt: string): Promise<string> {
         }
       }
     );
-    console.log("DeepSeek API response:", response.data);
 
     return response.data.choices[0].message.content;
   } catch (error: any) {
