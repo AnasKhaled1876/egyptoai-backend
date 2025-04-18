@@ -7,11 +7,6 @@ import { callGroq } from "../services/groq.service";
 
 const router = Router();
 
-enum AIModels {
-  GEMINI = "gemini",
-  DEEPSEEK = "deepseek",
-}
-
 router.post(
   "/",
   chatRateLimiter, // 👈 apply the limiter here
@@ -27,13 +22,13 @@ router.post(
       var reply = {};
       switch (model) {
         case "gemini":
-          reply = await callDeepSeek(prompt);
+          reply = await callGemini([{content: prompt, role: "user"}]);
           break;
           case "deepseek":
-          reply = await callGemini(prompt);
+          reply = await callDeepSeek([{content: prompt, role: "user"}]);
           break;
           case "groq":
-          reply = await callGroq(prompt);
+          reply = await callGroq([{content: prompt, role: "user"}]);
           break;
         default:
           res.status(400).json({ error: "Invalid model specified." });
@@ -49,7 +44,7 @@ router.post(
 router.post(
   "/title",
   async (req, res) => {
-    const { conversation } = req.body;
+    const { conversation, model } = req.body;
 
     if (!conversation) {
       res.status(400).json({ error: "Conversation text is required." });
@@ -58,8 +53,22 @@ router.post(
 
     try {
       // Craft a prompt for generating a title
-      const titlePrompt = `Generate a concise title (max 10 words) for this conversation:\n\n${conversation}`;
-      const title = await callDeepSeek(titlePrompt);
+      const titlePrompt = `Generate a concise title (max 20 characters no more please) for this conversation in Arabic Egyptian only no english :\n\n${conversation}`;
+      var title;
+      switch (model) {
+        case "gemini":
+          title = await callGemini([{ content: titlePrompt, role: "user" }]);
+          break;
+          case "deepseek":
+          title = await callDeepSeek([{ content: titlePrompt, role: "user" }]);
+          break;
+          case "groq":
+          title = await callGroq([{ content: titlePrompt, role: "user" }]);
+          break;
+        default:
+          res.status(400).json({ error: "Invalid model specified." });
+          return;
+      }
 
       // Clean up the response if needed (assuming DeepSeek might return extra formatting)
       const cleanedTitle = title.trim().replace(/^"|"$/g, "");
