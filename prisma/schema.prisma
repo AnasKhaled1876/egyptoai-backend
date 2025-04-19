@@ -7,14 +7,22 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 model User {
-  id        Int           @id @default(autoincrement())
-  email     String        @unique
+  id        Int     @id @default(autoincrement())
+  email     String  @unique
   password  String
   name      String?
+  createdAt DateTime @default(now())
+  chats     Chat[]  // 👈 One-to-many relation
+}
+
+model Chat {
+  id        Int           @id @default(autoincrement())
+  title     String?
   createdAt DateTime      @default(now())
-  chats     ChatMessage[] // one-to-many relation
+  userId    Int
+  user      User          @relation(fields: [userId], references: [id])
+  messages  ChatMessage[] // 👈 One-to-many relation
 }
 
 model ChatMessage {
@@ -22,6 +30,6 @@ model ChatMessage {
   prompt    String
   reply     String
   createdAt DateTime @default(now())
-  userId    Int?
-  user      User?    @relation(fields: [userId], references: [id])
+  chatId    Int
+  chat      Chat     @relation(fields: [chatId], references: [id])
 }
