@@ -19,7 +19,7 @@ router.post("/login", async (req: Request, res: Response) => {
   if (!isMatch) return res.status(401).json({ error: "Invalid credentials." });
 
   const token = generateToken({ userId: user.id });
-  res.json({ token, user: user, status: true, message: "Login successful" });
+  res.json({ token, user, status: true, message: "Login successful" });
 });
 
 export default router;

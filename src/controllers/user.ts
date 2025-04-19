@@ -24,7 +24,7 @@ export const registerUser = async (req: Request, res: Response) => {
         });
 
         const token = generateToken({ userId: user.id });
-        res.json({ token });
+        res.json({ token, user, status: true, message: "User registered successfully" });
     } catch (error) {
         res.status(500).json({ error: "An error occurred while registering the user." });
     }
