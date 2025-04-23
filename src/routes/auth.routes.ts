@@ -22,4 +22,13 @@ router.post("/login", async (req: Request, res: Response) => {
   res.json({ token, user, status: true, message: "Login successful" });
 });
 
+router.post("/check-email", async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return res.status(401).json({ error: "Invalid Email." });
+
+  res.json({ status: true, message: "Email is valid" });
+});
+
 export default router;
