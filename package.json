@@ -1,16 +1,16 @@
 {
   "name": "egyptoai-backend",
   "version": "1.0.0",
+  "description": "Backend for EgyptoAI - A friendly Egyptian tour guide AI",
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "npx prisma generate && tsc",
     "start": "npx prisma migrate deploy && node dist/index.js"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "keywords": [],
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
     "@prisma/client": "^6.6.0",
