@@ -1,3 +1,8 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+
 // src/services/callGemini.ts
 import axios from "axios";
 
@@ -45,6 +50,34 @@ export async function callGemini(messages: ChatMessageInterface[]): Promise<stri
     return textResponse || "No response from Gemini.";
   } catch (error: any) {
     console.error("Gemini API error:", error.response?.data || error.message);
+    throw new Error("Failed to fetch response from Gemini.");
+  }
+}
+
+
+export async function callGeminiStream(messages: { role: string, content: string }[], onData: (chunk: string) => void) {
+  try {
+    const systemInstruction = "You are EgyptoAI, a friendly Egyptian tour guide that speaks Egyptian Arabic slang but polite and also helps other with other things other than tourism.";
+
+    messages[0].content = `${systemInstruction}\n\nUser input: ${messages[0].content}`;
+    
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+    const chat = model.startChat({ history: messages.map(m => ({
+      role: m.role,
+      parts: [{ text: m.content }]
+    })) });
+
+    const result = await chat.sendMessageStream(messages[messages.length - 1].content);
+
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) {
+        onData(text);
+      }
+    }
+  } catch (error: any) {
+    console.error("Gemini API error:", error.message || error);
     throw new Error("Failed to fetch response from Gemini.");
   }
 }

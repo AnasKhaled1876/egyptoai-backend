@@ -7,13 +7,14 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
 model User {
-  id        Int     @id @default(autoincrement())
-  email     String  @unique
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
   password  String
   name      String?
   createdAt DateTime @default(now())
-  chats     Chat[]  // 👈 One-to-many relation
+  chats     Chat[] // 👈 One-to-many relation
 }
 
 model Chat {
@@ -32,4 +33,11 @@ model ChatMessage {
   createdAt DateTime @default(now())
   chatId    Int
   chat      Chat     @relation(fields: [chatId], references: [id])
+}
+
+// prisma/schema.prisma
+model QuickPrompt {
+  id    Int    @id @default(autoincrement())
+  text  String
+  createdAt DateTime @default(now())
 }

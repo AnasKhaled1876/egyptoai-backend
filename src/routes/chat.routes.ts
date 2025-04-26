@@ -3,8 +3,8 @@ import { Router, Request, Response } from "express";
 import { PrismaClient, Chat } from "@prisma/client";
 import { authenticateToken } from "../middlewares/auth";
 import { chatRateLimiter } from "../middlewares/rateLimiter";
-import { callDeepSeek } from "../services/deepseek.service";
-import { callGemini } from "../services/gemini.service";
+import { callDeepSeek, callDeepSeekStream } from "../services/deepseek.service";
+import { callGemini, callGeminiStream } from "../services/gemini.service";
 import { callGroq } from "../services/groq.service";
 
 const prisma = new PrismaClient();
@@ -84,8 +84,6 @@ router.get(
     }
   }
 );
-
-
 router.post(
   "/",
   authenticateToken,
@@ -100,67 +98,44 @@ router.post(
     }
 
     try {
-      let reply: string;
+      res.setHeader("Content-Type", "text/event-stream"); // VERY IMPORTANT
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders(); // send headers now
+
+      let streamer: (text: string) => Promise<void>;
+
       switch (model) {
         case "gemini":
-          reply = await callGemini([{ content: prompt, role: "user" }]);
+          streamer = (text) => new Promise(async (resolve) => {
+            await callGeminiStream([{ content: prompt, role: "user" }], (chunk: any) => {
+              res.write(`data: ${chunk}\n\n`);
+            });
+            resolve();
+          });
           break;
         case "deepseek":
-          reply = await callDeepSeek([{ content: prompt, role: "user" }]);
-          break;
-        case "groq":
-          reply = await callGroq([{ content: prompt, role: "user" }]);
+          streamer = (text) => new Promise(async (resolve) => {
+            await callDeepSeekStream([{ content: prompt, role: "user" }], (chunk) => {
+              res.write(`data: ${chunk}\n\n`);
+            });
+            resolve();
+          });
           break;
         default:
           return res.status(400).json({ error: "Invalid model specified." });
       }
 
-      let chat: Chat;
-      if (chatId) {
-        const existing = await prisma.chat.findUnique({ where: { id: chatId } });
-        if (!existing) {
-          return res.status(404).json({ error: "Chat not found." });
-        }
-        chat = existing;
-      } else {
-        // create new chat with placeholder title
-        chat = await prisma.chat.create({
-          data: { userId, title: "محادثة جديدة" }
-        });
-
-        // generate title asynchronously
-        const titlePrompt =
-          `Generate a concise title (max 20 characters) for this conversation in Egyptian Arabic only:\n\n${prompt}`;
-        let generateTitle: Promise<string>;
-        switch (model) {
-          case "gemini":
-            generateTitle = callGemini([{ content: titlePrompt, role: "user" }]);
-            break;
-          case "deepseek":
-            generateTitle = callDeepSeek([{ content: titlePrompt, role: "user" }]);
-            break;
-          default:
-            generateTitle = callGroq([{ content: titlePrompt, role: "user" }]);
-        }
-        generateTitle.then(async (title) => {
-          const cleaned = title.trim().replace(/^"|"$/g, "");
-          await prisma.chat.update({
-            where: { id: chat.id },
-            data: { title: cleaned || "محادثة جديدة" }
-          });
-        }).catch((err) => console.error("Title generation failed:", err));
-      }
-
-      await prisma.chatMessage.create({
-        data: { chatId: chat.id, prompt, reply }
-      });
-
-      return res.json({ data: { chatId: chat.id, reply }, status: true, message: "Success" });
+      await streamer(prompt);
+      
+      res.end();
     } catch (err) {
       console.error(err);
-      return res.status(500).json({ error: "Failed to process request." });
+      res.status(500).json({ error: "Failed to process request." });
     }
   }
 );
+
+
 
 export default router;

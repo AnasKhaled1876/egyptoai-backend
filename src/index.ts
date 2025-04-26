@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import factsRouter from "./routes/facts";
 import chatRoutes from "./routes/chat.routes";
 import authRoutes from "./routes/auth.routes";
+import quickPromptsRoutes from "./routes/quick-prompts.routes";
 import express from "express";
 import cors from "cors";
 
@@ -15,9 +15,11 @@ app.use(express.json());
 
 app.use("/api/chat", chatRoutes);
 
-app.use("/api/facts", factsRouter);
+app.use("/api/chat", chatRoutes);
 
 app.use("/api/auth", authRoutes);
+
+app.use("/api/quick-prompts", quickPromptsRoutes);
 
 app.get("/", (_req, res) => {
   res.send("Welcome to EgyptoAI Backend 🇪🇬");
