@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "npx prisma generate && tsc",
-    "start": "npx prisma migrate deploy && node dist/index.js"
+    "start": "npx prisma migrate deploy && node dist/index.js",
+    "postinstall": "npm install @google/generative-ai@0.24.0"
   },
   "author": "",
   "license": "ISC",
