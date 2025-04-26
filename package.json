@@ -1,6 +1,7 @@
 {
   "name": "egyptoai-backend",
   "version": "1.0.0",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -10,12 +11,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
-    "@google/genai": "^0.10.0",
+    "@google/generative-ai": "^0.24.0",
     "@prisma/client": "^6.6.0",
-    "@types/express": "^4.17.17",
-    "@types/node-cron": "^3.0.11",
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
@@ -33,10 +31,10 @@
     "@types/bcrypt": "^5.0.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
-    "@google/genai": "^0.10.0",
-    "@types/node-cron": "^3.0.11",
+    "@types/express": "^4.17.17",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.14.0",
+    "@types/node-cron": "^3.0.11",
     "prisma": "^6.6.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
