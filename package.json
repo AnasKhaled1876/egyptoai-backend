@@ -7,14 +7,13 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--import tsx' tsx watch src/index.ts",
     "build": "npx prisma generate && tsc",
-    "start": "npx prisma migrate deploy && node dist/index.js",
-    "postinstall": "npm install @google/generative-ai@0.24.0"
+    "start": "npx prisma migrate deploy && node dist/index.js"
   },
   "author": "",
   "license": "ISC",
   "keywords": [],
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@google/generative-ai": "^0.24.0",
     "@prisma/client": "^6.9.0",
     "@supabase/supabase-js": "^2.50.0",
     "axios": "^1.8.4",
