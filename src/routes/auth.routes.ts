@@ -16,7 +16,7 @@ const router = Router();
 // Public routes
 router.post("/signup", signUp);
 router.post("/signin", signIn);
-router.post("/signin", checkEmailExists);
+router.post("/check-email", checkEmailExists);
 
 // Protected routes (require authentication)
 router.post("/signout", authenticateToken, signOut);
