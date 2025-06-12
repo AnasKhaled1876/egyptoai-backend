@@ -1,20 +1,23 @@
-# Use official Node.js 20 image
+# Use Node.js 20 base image
 FROM node:20
 
 # Set working directory
 WORKDIR /app
 
-# Copy all files
-COPY . .
+# Copy only package files first (for better Docker caching)
+COPY package*.json ./
 
-# Install dependencies using npm
+# Install dependencies
 RUN npm install
 
-# Generate Prisma client
+# Then copy the rest of the project
+COPY . .
+
+# Generate Prisma client AFTER install
 RUN npx prisma generate
 
-# Build TypeScript
+# Build the project
 RUN npm run build
 
-# Start the app
+# Run the app
 CMD ["npm", "run", "start"]
