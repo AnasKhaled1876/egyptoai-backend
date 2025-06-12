@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: egyptoai-backend
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    buildFilter:
+      paths:
+        - "**/*"
+    envVars:
+      - key: NODE_VERSION
+        value: 20
