@@ -67,6 +67,7 @@ enum UserRole {
 
 model QuickPrompt {
   id        String   @id @default(uuid()) @db.Uuid
+  emoji     String   @default("")
   text      String
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

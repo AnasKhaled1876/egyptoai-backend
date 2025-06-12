@@ -13,12 +13,20 @@ router.get("/", async (req: Request, res: Response) => {
     const prompts = await prisma.quickPrompt.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
+        emoji: true,
         text: true,
         createdAt: true
       }
     });
     
-    res.json({ status: true, data: prompts });
+    // Transform the data to match the expected frontend format
+    const formattedPrompts = prompts.map(prompt => ({
+      emoji: prompt.emoji,
+      text: prompt.text,
+      createdAt: prompt.createdAt
+    }));
+    
+    res.json({ status: true, data: formattedPrompts });
   } catch (err) {
     console.error('Error fetching quick prompts:', err);
     res.status(500).json({ 
