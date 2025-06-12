@@ -76,6 +76,7 @@ if (process.env.NODE_ENV === 'production') {
 
 // Routes
 app.use("/api/chat", chatRoutes);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/quick-prompts", quickPromptsRoutes);
 
