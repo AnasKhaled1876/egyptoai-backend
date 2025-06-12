@@ -305,6 +305,46 @@ export const getFCMTokens = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Check if an account with the given email exists
+ * @route GET /api/user/check-email
+ * @param {string} email - The email to check
+ * @returns {Promise<{ exists: boolean }>} Whether the email exists in the system
+ */
+export const checkEmailExists = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.query;
+
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ 
+        status: false, 
+        message: 'Email query parameter is required' 
+      });
+    }
+
+    // Check if user exists in Prisma
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true } // Only select id to minimize data transfer
+    });
+
+    return res.json({ 
+      status: true, 
+      data: { 
+        exists: !!existingUser,
+        email
+      } 
+    });
+  } catch (error) {
+    console.error('Error checking email:', error);
+    return res.status(500).json({ 
+      status: false, 
+      message: 'Failed to check email',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 // Remove FCM token
 export const removeFCMToken = async (req: Request, res: Response) => {
   try {

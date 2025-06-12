@@ -5,6 +5,7 @@ import {
   signOut, 
   getSession, 
   updateProfile,
+  checkEmailExists,
   getFCMTokens,
   removeFCMToken
 } from "../controllers/user.js";
@@ -15,6 +16,7 @@ const router = Router();
 // Public routes
 router.post("/signup", signUp);
 router.post("/signin", signIn);
+router.post("/signin", checkEmailExists);
 
 // Protected routes (require authentication)
 router.post("/signout", authenticateToken, signOut);
