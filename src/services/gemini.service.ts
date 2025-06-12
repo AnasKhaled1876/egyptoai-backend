@@ -10,7 +10,7 @@ interface ChatMessageInterface {
 // 📜 Standard call (for things like updating prompts)
 export async function callGemini(messages: ChatMessageInterface[]): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const result = await model.generateContent({
       contents: messages.map(m => ({

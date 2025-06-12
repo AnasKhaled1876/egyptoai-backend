@@ -1,43 +1,75 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
+  id        String     @id @default(uuid()) @db.Uuid
+  email     String     @unique
   name      String?
-  createdAt DateTime @default(now())
-  chats     Chat[] // 👈 One-to-many relation
+  password  String?
+  role      UserRole   @default(USER)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  chats     Chat[]
+  fcmTokens FCMToken[]
+
+  @@map("users")
+}
+
+model FCMToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  token      String
+  deviceInfo String?  @map("device_info")
+  userId     String   @map("user_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token], name: "user_fcm_tokens_user_id_token_key")
+  @@map("fcm_tokens")
 }
 
 model Chat {
-  id        Int           @id @default(autoincrement())
+  id        String        @id @default(uuid()) @db.Uuid
   title     String?
-  createdAt DateTime      @default(now())
-  userId    Int
+  userId    String        @map("user_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  messages  ChatMessage[]
   user      User          @relation(fields: [userId], references: [id])
-  messages  ChatMessage[] // 👈 One-to-many relation
+
+  @@map("chats")
 }
 
 model ChatMessage {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(uuid()) @db.Uuid
   prompt    String
   reply     String
-  createdAt DateTime @default(now())
-  chatId    Int
+  chatId    String   @map("chat_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   chat      Chat     @relation(fields: [chatId], references: [id])
+
+  @@map("chat_messages")
 }
 
-// prisma/schema.prisma
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+}
+
 model QuickPrompt {
-  id    Int    @id @default(autoincrement())
-  text  String
-  createdAt DateTime @default(now())
+  id        String   @id @default(uuid()) @db.Uuid
+  text      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("quick_prompts")
 }

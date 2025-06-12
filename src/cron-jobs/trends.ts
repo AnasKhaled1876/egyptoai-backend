@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { PrismaClient } from "@prisma/client";
-import { callGemini } from "../services/gemini.service";
+import { callGemini } from "../services/gemini.service.js";
 
 
 const prisma = new PrismaClient();
