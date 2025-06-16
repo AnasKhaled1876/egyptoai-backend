@@ -12,6 +12,7 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
       photoUrl, 
       fcmToken, 
       deviceInfo = 'mobile',
+      googleId, // Google's unique user ID
       token // Google ID token for verification if needed
     } = req.body;
 
@@ -58,6 +59,7 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
         user = await prisma.user.update({
           where: { id: user.id },
           data: {
+            googleId: googleId || user.googleId,
             photoUrl: photoUrl || user.photoUrl,
             provider: 'google',
             // Don't override name if it already exists
