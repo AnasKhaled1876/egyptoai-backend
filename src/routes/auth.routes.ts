@@ -7,7 +7,8 @@ import {
   updateProfile,
   checkEmailExists,
   getFCMTokens,
-  removeFCMToken
+  removeFCMToken,
+  handleGoogleSignIn
 } from "../controllers/user.js";
 import { authenticateToken } from "../middlewares/auth.js";
 
@@ -16,6 +17,7 @@ const router = Router();
 // Public routes
 router.post("/signup", signUp);
 router.post("/signin", signIn);
+router.post("/google", handleGoogleSignIn);
 router.post("/check-email", checkEmailExists);
 
 // Protected routes (require authentication)

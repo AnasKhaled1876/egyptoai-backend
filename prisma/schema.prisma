@@ -12,7 +12,10 @@ model User {
   id        String     @id @default(uuid()) @db.Uuid
   email     String     @unique
   name      String?
-  password  String?
+  password  String?    @map("hashed_password")
+  photoUrl  String?    @map("photo_url")
+  googleId  String?    @unique @map("google_id") // Google's unique user ID
+  provider  String?    @default("email") // 'google', 'email', etc.
   role      UserRole   @default(USER)
   createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)

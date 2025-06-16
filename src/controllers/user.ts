@@ -2,6 +2,149 @@ import { Request, Response } from "express";
 import { supabase } from "../utils/supabase.js";
 import { prisma } from "../utils/prisma.js";
 import { v4 as uuidv4 } from 'uuid';
+import { generateToken } from "../utils/jwt.js";
+
+export const handleGoogleSignIn = async (req: Request, res: Response) => {
+  try {
+    const { 
+      email, 
+      name, 
+      photoUrl, 
+      fcmToken, 
+      deviceInfo = 'mobile',
+      token // Google ID token for verification if needed
+    } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Email is required' 
+      });
+    }
+
+    // Check if user exists with this email
+    let user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        fcmTokens: {
+          where: { token: fcmToken || '' },
+          select: { id: true }
+        }
+      }
+    });
+
+    // If user doesn't exist, create them with auto-generated ID
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          // Let Prisma generate the ID
+          email,
+          name: name || email.split('@')[0],
+          photoUrl: photoUrl || null,
+          provider: 'google',
+          role: 'USER',
+          // Password is not required for OAuth users
+        },
+        include: {
+          fcmTokens: {
+            where: { token: fcmToken || '' },
+            select: { id: true }
+          }
+        }
+      });
+    } else {
+      // Update existing user with Google data if needed
+      if (!user.provider) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            photoUrl: photoUrl || user.photoUrl,
+            provider: 'google',
+            // Don't override name if it already exists
+            name: user.name || name || email.split('@')[0],
+          },
+          include: {
+            fcmTokens: {
+              where: { token: fcmToken || '' },
+              select: { id: true }
+            }
+          }
+        });
+      }
+    }
+
+    // Save FCM token if provided and not already saved
+    if (fcmToken && (!user.fcmTokens || user.fcmTokens.length === 0)) {
+      try {
+        // First try to find if the token exists for any user
+        const existingToken = await prisma.fCMToken.findFirst({
+          where: { token: fcmToken }
+        });
+
+        if (existingToken) {
+          // Update if it belongs to current user, otherwise create a new one
+          if (existingToken.userId === user.id) {
+            await prisma.fCMToken.update({
+              where: { id: existingToken.id },
+              data: { deviceInfo: deviceInfo || 'mobile' }
+            });
+          } else {
+            await prisma.fCMToken.create({
+              data: {
+                token: fcmToken,
+                userId: user.id,
+                deviceInfo: deviceInfo || 'mobile'
+              }
+            });
+          }
+        } else {
+          await prisma.fCMToken.create({
+            data: {
+              token: fcmToken,
+              userId: user.id,
+              deviceInfo: deviceInfo || 'mobile'
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error saving FCM token:', error);
+        // Continue even if FCM token save fails
+      }
+    }
+
+    // Generate JWT token for the user
+    const authToken = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role
+    });
+
+    // Return user data without sensitive information
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      photoUrl: user.photoUrl,
+      role: user.role,
+      provider: user.provider || 'email'
+    };
+
+    return res.json({
+      success: true,
+      token: authToken,
+      user: userData
+    });
+
+  } catch (error) {
+    console.error('Google sign-in error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    return res.status(500).json({ 
+      success: false,
+      error: 'Failed to process Google sign-in',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
+  }
+};
 
 export const signUp = async (req: Request, res: Response) => {
   try {
@@ -16,12 +159,13 @@ export const signUp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
-    // 1. Create user in Supabase Auth
+    // 1. Create user in Supabase Auth with email confirmation disabled
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { name }
+        data: { name },
+        emailRedirectTo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback`
       },
     });
 
@@ -29,17 +173,21 @@ export const signUp = async (req: Request, res: Response) => {
       return res.status(400).json({ error: signUpError.message });
     }
 
-    // 2. Create user in Prisma with the same ID as Supabase
+    // 2. Confirm the user's email automatically
+    if (authData.user) {
+      const { data: confirmData, error: confirmError } = await supabase.auth.admin.updateUserById(
+        authData.user.id,
+        { email_confirm: true }
+      );
+
+      if (confirmError) {
+        console.error('Error confirming user email:', confirmError);
+        return res.status(500).json({ error: 'Failed to confirm user email' });
+      }
+    }
+
+    // 3. Create user in Prisma with the same ID as Supabase
     const user = await prisma.user.create({
-      /**
-       * Data to be created in the Prisma user table.
-       *
-       * @prop {string} id - The ID of the user, which is the same as the ID in
-       * Supabase Auth. If the user is created in Supabase Auth successfully,
-       * use the ID from Supabase Auth. Otherwise, generate a random UUID.
-       * @prop {string} email - The email address of the user.
-       * @prop {string} name - The name of the user.
-       */
       data: {
         id: authData.user?.id || uuidv4(),
         email,
@@ -53,7 +201,7 @@ export const signUp = async (req: Request, res: Response) => {
       }
     });
 
-    // 3. Save FCM token if provided
+    // 4. Save FCM token if provided
     if (fcmToken) {
       await prisma.fCMToken.create({
         data: {
@@ -64,10 +212,21 @@ export const signUp = async (req: Request, res: Response) => {
       });
     }
 
-    // 4. Return the user data and session
+    // 5. Sign in the user to get a session
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) {
+      console.error('Error signing in after registration:', signInError);
+      return res.status(500).json({ error: 'Failed to sign in after registration' });
+    }
+
+    // 6. Return the user data and session
     return res.status(201).json({
       user,
-      session: authData.session,
+      session: signInData.session,
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -325,7 +484,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
     // Check if user exists in Prisma
     const existingUser = await prisma.user.findUnique({
       where: { email },
-      select: { id: true } // Only select id to minimize data transfer
+      select: { id: true }
     });
 
     return res.json({ 
