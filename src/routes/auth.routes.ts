@@ -10,7 +10,7 @@ import {
   handleGoogleSignIn
 } from "../controllers/user.js";
 import { authenticateToken } from "../middlewares/auth.js";
-import { getProfile, updateProfile } from "@/controllers/profile.js";
+import { getProfile, updateProfile } from "../controllers/profile.js";
 
 const router = Router();
 
