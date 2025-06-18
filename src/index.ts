@@ -12,6 +12,7 @@ import { dirname } from 'path';
 import chatRoutes from "./routes/chat.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import quickPromptsRoutes from "./routes/quickPrompts.routes.js";
+import profileRoutes from "./routes/profile.routes.js";
 
 // Initialize Express app
 const app = express();
@@ -78,6 +79,9 @@ if (process.env.NODE_ENV === 'production') {
 app.use("/api/chat", chatRoutes);
 
 app.use("/api/auth", authRoutes);
+
+app.use("/api/profile", profileRoutes);
+
 app.use("/api/quick-prompts", quickPromptsRoutes);
 
 // Health check endpoint
