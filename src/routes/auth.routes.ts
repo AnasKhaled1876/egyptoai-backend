@@ -4,13 +4,13 @@ import {
   signIn, 
   signOut, 
   getSession, 
-  updateProfile,
   checkEmailExists,
   getFCMTokens,
   removeFCMToken,
   handleGoogleSignIn
 } from "../controllers/user.js";
 import { authenticateToken } from "../middlewares/auth.js";
+import { getProfile, updateProfile } from "@/controllers/profile.js";
 
 const router = Router();
 
@@ -23,6 +23,7 @@ router.post("/check-email", checkEmailExists);
 // Protected routes (require authentication)
 router.post("/signout", authenticateToken, signOut);
 router.get("/session", authenticateToken, getSession);
+router.get("/profile", authenticateToken, getProfile);
 router.put("/profile", authenticateToken, updateProfile);
 
 // FCM Token management
