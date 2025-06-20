@@ -12,6 +12,7 @@ declare global {
         email: string;
         name: string | null;
         role: UserRole;
+        emailVerified: boolean;
       };
     }
   }
@@ -29,6 +30,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
     if (!token) {
       return res.status(401).json({ 
+        success: false,
         error: 'No token provided',
         message: 'Please provide a valid authentication token in the Authorization header'
       });
@@ -36,52 +38,53 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
     // Verify the token with Supabase
     const { 
-      data: { user }, 
+      data: { user: supabaseUser }, 
       error 
     } = await supabase.auth.getUser(token);
     
-    if (error || !user) {
-      return res.status(403).json({ 
+    if (error || !supabaseUser) {
+      return res.status(401).json({ 
+        success: false,
         error: 'Invalid or expired token',
         message: 'The provided token is invalid or has expired. Please log in again.'
       });
     }
 
-    // Fetch user data including role from the database
-    const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
+    // Fetch user data from our database
+    const user = await prisma.user.findUnique({
+      where: { id: supabaseUser.id },
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
-      },
+        emailConfirmed: true
+      }
     });
 
-    if (!dbUser) {
-      return res.status(404).json({ 
+    // Map the user object to include emailVerified for backward compatibility
+    const userWithVerified = user ? {
+      ...user,
+      emailVerified: user.emailConfirmed
+    } : null;
+
+    if (!userWithVerified) {
+      return res.status(404).json({
+        success: false,
         error: 'User not found',
-        message: 'The user associated with this token was not found in the database'
+        message: 'The user associated with this token was not found in our system.'
       });
     }
 
-    // Attach user to the request object
-    req.user = {
-      id: dbUser.id,
-      email: dbUser.email,
-      name: dbUser.name,
-      role: dbUser.role,
-    };
-
-    // Continue to the next middleware/route handler
+    // Attach user to request object
+    req.user = userWithVerified;
     next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
+      success: false,
       error: 'Authentication failed',
-      message: 'An error occurred during authentication',
-      // Only include stack trace in development
-      ...(process.env.NODE_ENV === 'development' && { stack: error instanceof Error ? error.stack : undefined })
+      message: 'An error occurred while authenticating the request.'
     });
   }
 };
@@ -90,30 +93,57 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
  * Middleware to check if the authenticated user has admin role
  */
 export const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
-  if (!req.user) {
-    return res.status(401).json({ 
-      error: 'Unauthorized',
-      message: 'Authentication required'
-    });
-  }
-
   try {
-    // Check if user has admin role
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Authentication required to access this resource.'
+      });
+    }
+
     if (req.user.role !== UserRole.ADMIN) {
-      return res.status(403).json({ 
+      return res.status(403).json({
+        success: false,
         error: 'Forbidden',
-        message: 'Insufficient permissions. Admin access required.'
+        message: 'You do not have permission to access this resource.'
       });
     }
 
     next();
   } catch (error) {
     console.error('Admin check error:', error);
-    res.status(500).json({ 
-      error: 'Authorization failed',
-      message: 'An error occurred while verifying user permissions',
-      // Only include stack trace in development
-      ...(process.env.NODE_ENV === 'development' && { stack: error instanceof Error ? error.stack : undefined })
+    return res.status(500).json({
+      success: false,
+      error: 'Authorization check failed',
+      message: 'An error occurred while checking user permissions.'
     });
+  }
+};
+
+/**
+ * Middleware to check if the user's email is verified
+ */
+export const requireEmailVerification = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Authentication required to access this resource.'
+      });
+    }
+
+    if (!req.user.emailVerified) {
+      return res.status(403).json({
+        success: false,
+        error: 'Email not verified',
+        message: 'Please verify your email address before accessing this resource.'
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Email verification check error:', error);
   }
 };

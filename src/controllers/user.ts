@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { supabase } from "../utils/supabase.js";
 import { prisma } from "../utils/prisma.js";
-import { v4 as uuidv4 } from 'uuid';
 import { generateToken } from "../utils/jwt.js";
 
 export const handleGoogleSignIn = async (req: Request, res: Response) => {
@@ -150,85 +149,105 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
 
 export const signUp = async (req: Request, res: Response) => {
   try {
-    const { email, password, name, fcmToken, deviceInfo } = req.body;
+    const { email, password, name, fcmToken, deviceInfo = 'web' } = req.body;
 
-    // Check if user already exists in Prisma
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-    
-    if (existingUser) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and password are required',
+      });
     }
 
-    // 1. Create user in Supabase Auth with email confirmation disabled
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email already in use',
+      });
+    }
+
+    // Create user in Supabase Auth
+    const { data: authUser, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { name },
-        emailRedirectTo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback`
+        emailRedirectTo: process.env.SUPABASE_EMAIL_REDIRECT_URL || 'http://localhost:3000/auth/callback',
+        data: {
+          name: name || email.split('@')[0],
+        },
       },
     });
 
     if (signUpError) {
-      return res.status(400).json({ error: signUpError.message });
-    }
-
-    // 2. Confirm the user's email automatically
-    if (authData.user) {
-      const { data: confirmData, error: confirmError } = await supabase.auth.admin.updateUserById(
-        authData.user.id,
-        { email_confirm: true }
-      );
-
-      if (confirmError) {
-        console.error('Error confirming user email:', confirmError);
-        return res.status(500).json({ error: 'Failed to confirm user email' });
-      }
-    }
-
-    // 3. Create user in Prisma with the same ID as Supabase
-    const user = await prisma.user.create({
-      data: {
-        id: authData.user?.id || uuidv4(),
-        email,
-        name,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true
-      }
-    });
-
-    // 4. Save FCM token if provided
-    if (fcmToken) {
-      await prisma.fCMToken.create({
-        data: {
-          token: fcmToken,
-          deviceInfo: deviceInfo || 'Unknown Device',
-          userId: user.id
-        }
+      console.error('Supabase signup error:', signUpError);
+      return res.status(400).json({
+        success: false,
+        error: signUpError.message || 'Failed to create user',
       });
     }
 
-    // 5. Sign in the user to get a session
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      console.error('Error signing in after registration:', signInError);
-      return res.status(500).json({ error: 'Failed to sign in after registration' });
+    if (!authUser.user) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create user',
+      });
     }
 
-    // 6. Return the user data and session
+    // Create user in our database
+    const user = await prisma.user.create({
+      data: {
+        id: authUser.user.id,
+        email,
+        name: name || email.split('@')[0],
+        provider: 'email',
+        role: 'USER',
+        emailConfirmed: false, // Will be updated when email is verified
+      },
+    });
+
+    // Save FCM token if provided
+    if (fcmToken) {
+      try {
+        await prisma.fCMToken.upsert({
+          where: { token: fcmToken },
+          update: { userId: user.id, deviceInfo },
+          create: {
+            token: fcmToken,
+            userId: user.id,
+            deviceInfo,
+          },
+        });
+      } catch (error) {
+        console.error('Error saving FCM token:', error);
+        // Continue with registration even if FCM token save fails
+      }
+    }
+
+    // Generate JWT token
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
     return res.status(201).json({
-      user,
-      session: signInData.session,
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          emailVerified: user.emailConfirmed,
+        },
+        token,
+      },
+      message: 'User registered successfully. Please check your email to verify your account.',
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -238,99 +257,126 @@ export const signUp = async (req: Request, res: Response) => {
 
 export const signIn = async (req: Request, res: Response) => {
   try {
-    const { email, password, fcmToken, deviceInfo } = req.body;
+    const { email, password, fcmToken, deviceInfo = 'web' } = req.body;
 
-    // 1. Authenticate with Supabase
-    const { data, error } = await supabase.auth.signInWithPassword({
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and password are required',
+      });
+    }
+
+    // Sign in with Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      return res.status(401).json({ error: error.message });
+    if (authError) {
+      console.error('Sign in error:', authError);
+      
+      // Handle specific error cases
+      if (authError.message.toLowerCase().includes('invalid login credentials')) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email or password',
+        });
+      }
+      
+      if (authError.message.toLowerCase().includes('email not confirmed')) {
+        return res.status(403).json({
+          success: false,
+          error: 'Email not verified',
+          message: 'Please verify your email before signing in.',
+          requiresConfirmation: true
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        error: authError.message || 'Failed to sign in',
+      });
     }
 
-    // 2. Get or create user in Prisma
-    let prismaUser = await prisma.user.findUnique({
-      where: { id: data.user.id },
+    // Get user from our database
+    const user = await prisma.user.findUnique({
+      where: { id: authData.user.id },
       select: {
         id: true,
         email: true,
         name: true,
-        fcmTokens: {
-          where: { token: fcmToken || '' },
-          select: { id: true, token: true }
-        }
-      }
+        role: true,
+        emailConfirmed: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
-    // 3. If user doesn't exist in Prisma but exists in Supabase (edge case)
-    if (!prismaUser) {
-      // Get user metadata from Supabase
-      const { data: { user: supabaseUser }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-
-      prismaUser = await prisma.user.create({
-        data: {
-          id: data.user.id,
-          email: data.user.email!,
-          name: supabaseUser?.user_metadata?.name,
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          fcmTokens: {
-            where: { token: fcmToken || '' },
-            select: { id: true, token: true }
-          }
-        }
+    if (!user) {
+      // This shouldn't happen if signup flow is working correctly
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        message: 'User not found in the database. Please sign up first.',
       });
     }
 
-    // 4. Save FCM token if provided
-    if (fcmToken) {
-      // First try to find if the token exists for any user
-      const existingToken = await prisma.fCMToken.findFirst({
-        where: { token: fcmToken }
-      });
 
-      if (existingToken) {
-        // Update if it belongs to current user, otherwise create a new one
-        if (existingToken.userId === data.user.id) {
-          await prisma.fCMToken.update({
-            where: { id: existingToken.id },
-            data: { deviceInfo: deviceInfo || 'Unknown Device' }
-          });
-        } else {
-          await prisma.fCMToken.create({
-            data: {
-              token: fcmToken,
-              deviceInfo: deviceInfo || 'Unknown Device',
-              userId: data.user.id
-            }
-          });
-        }
-      } else {
-        // Create new token if it doesn't exist
-        await prisma.fCMToken.create({
-          data: {
+    // Check if email is verified in Supabase
+    if (!authData.user.email_confirmed_at) {
+      return res.status(403).json({
+        success: false,
+        error: 'Email not verified',
+        message: 'Please verify your email before signing in.',
+        requiresConfirmation: true
+      });
+    }
+
+    // Save FCM token if provided
+    if (fcmToken) {
+      try {
+        await prisma.fCMToken.upsert({
+          where: { token: fcmToken },
+          update: { 
+            userId: user.id, 
+            deviceInfo,
+            updatedAt: new Date()
+          },
+          create: {
             token: fcmToken,
-            deviceInfo: deviceInfo || 'Unknown Device',
-            userId: data.user.id
-          }
+            userId: user.id,
+            deviceInfo,
+          },
         });
+      } catch (error) {
+        console.error('Error updating FCM token:', error);
+        // Continue with login even if FCM token update fails
       }
     }
 
-    // Return the user data and session
+    // Generate JWT token
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    // Return user data and token
     return res.json({
-      user: {
-        id: prismaUser.id,
-        email: prismaUser.email,
-        name: prismaUser.name,
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          emailVerified: user.emailConfirmed,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+        token,
       },
-      session: data.session,
     });
   } catch (error) {
     console.error('Sign in error:', error);
@@ -341,28 +387,55 @@ export const signIn = async (req: Request, res: Response) => {
 export const signOut = async (req: Request, res: Response) => {
   try {
     const { fcmToken } = req.body;
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
-    // 1. Remove FCM token if provided
-    if (fcmToken && userId) {
-      await prisma.fCMToken.deleteMany({
-        where: {
-          userId,
-          token: fcmToken
-        }
+    // Validate user is authenticated
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Not authenticated',
+        message: 'You must be logged in to sign out.',
       });
     }
 
-    // 2. Sign out from Supabase
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      return res.status(400).json({ error: error.message });
+    // Sign out from Supabase Auth
+    const { error: signOutError } = await supabase.auth.signOut();
+
+    if (signOutError) {
+      console.error('Supabase sign out error:', signOutError);
+      // Continue with local sign out even if Supabase sign out fails
     }
 
-    return res.status(200).json({ message: 'Successfully signed out' });
+    // Remove FCM token if provided
+    if (fcmToken) {
+      try {
+        await prisma.fCMToken.deleteMany({
+          where: {
+            userId,
+            token: fcmToken,
+          },
+        });
+      } catch (error) {
+        console.error('Error removing FCM token during sign out:', error);
+        // Continue with sign out even if FCM token removal fails
+      }
+    }
+
+    // Clear any session cookies if using cookies for auth
+    res.clearCookie('sb-access-token');
+    res.clearCookie('sb-refresh-token');
+
+    return res.json({
+      success: true,
+      message: 'Signed out successfully',
+    });
   } catch (error) {
     console.error('Sign out error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'An error occurred while signing out',
+    });
   }
 };
 
@@ -476,37 +549,162 @@ export const checkEmailExists = async (req: Request, res: Response) => {
   try {
     const { email } = req.query;
 
+    // Validate input
     if (!email || typeof email !== 'string') {
-      return res.status(400).json({ 
-        status: false, 
-        message: 'Email query parameter is required' 
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required and must be a string',
       });
     }
 
-    // Check if user exists in Prisma
-    const existingUser = await prisma.user.findUnique({
+    // Check if email exists in our database
+    const user = await prisma.user.findUnique({
       where: { email },
-      select: { id: true }
+      select: {
+        id: true,
+        email: true,
+        emailConfirmed: true,
+        name: true,
+        provider: true,
+      },
     });
 
-    return res.json({ 
-      status: true, 
-      data: { 
-        exists: !!existingUser,
-        email
-      } 
+    if (!user) {
+      return res.json({
+        success: true,
+        exists: false,
+        message: 'No account found with this email address.',
+      });
+    }
+
+    // Check if email is verified in Supabase
+    let isEmailVerified = user.emailConfirmed;
+    
+    // If not verified in our DB, double check with Supabase
+    if (!isEmailVerified) {
+      try {
+        const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(user.id);
+        if (!authError && authUser.user?.email_confirmed_at) {
+          // Update our database if Supabase shows the email is confirmed
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { emailConfirmed: true },
+          });
+          isEmailVerified = true;
+        }
+      } catch (error) {
+        console.error('Error checking email verification status with Supabase:', error);
+        // Continue with existing value if there's an error
+      }
+    }
+
+    return res.json({
+      success: true,
+      exists: true,
+      data: {
+        email: user.email,
+        name: user.name,
+        provider: user.provider,
+        emailVerified: isEmailVerified,
+      },
     });
   } catch (error) {
-    console.error('Error checking email:', error);
-    return res.status(500).json({ 
-      status: false, 
-      message: 'Failed to check email',
-      error: error instanceof Error ? error.message : 'Unknown error'
+    console.error('Check email exists error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'An error occurred while checking the email',
     });
   }
 };
 
-// Remove FCM token
+export const resendConfirmationEmail = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    // Validate input
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required',
+      });
+    }
+
+    // Check if user exists in our database
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { 
+        id: true, 
+        emailConfirmed: true,
+        email: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        message: 'No account found with this email address.',
+      });
+    }
+
+    // Check if email is already confirmed
+    if (user.emailConfirmed) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email already verified',
+        message: 'This email has already been verified.',
+      });
+    }
+
+    // Resend confirmation email using Supabase Auth
+    const { error: supabaseError } = await supabase.auth.resend({
+      type: 'signup',
+      email: user.email,
+      options: {
+        emailRedirectTo: process.env.SUPABASE_EMAIL_REDIRECT_URL || 'http://localhost:3000/auth/callback',
+      },
+    });
+
+    if (supabaseError) {
+      console.error('Supabase resend confirmation error:', supabaseError);
+      
+      // Handle specific error cases
+      if (supabaseError.message.includes('already confirmed')) {
+        // Update our database to reflect the confirmed status
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailConfirmed: true },
+        });
+        
+        return res.status(400).json({
+          success: false,
+          error: 'Email already verified',
+          message: 'This email has already been verified. You can now sign in.',
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: 'Failed to resend confirmation email',
+        message: supabaseError.message || 'An error occurred while sending the confirmation email',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Confirmation email has been resent. Please check your inbox.',
+    });
+  } catch (error) {
+    console.error('Resend confirmation email error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'An error occurred while processing your request',
+    });
+  }
+};
+
 export const removeFCMToken = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -536,6 +734,24 @@ export const removeFCMToken = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Token removed successfully' });
   } catch (error) {
     console.error('Remove FCM token error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      message: 'An error occurred while removing the FCM token',
+    });
   }
+};
+
+// Default export for all controller functions
+export default {
+  handleGoogleSignIn,
+  signUp,
+  signIn,
+  signOut,
+  getSession,
+  updateProfile,
+  getFCMTokens,
+  checkEmailExists,
+  resendConfirmationEmail,
+  removeFCMToken,
 };
