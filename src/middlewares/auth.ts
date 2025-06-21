@@ -58,15 +58,22 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
         email: true,
         name: true,
         role: true,
-        emailConfirmed: true
+        emailVerified: true
       }
     });
-
-    // Map the user object to include emailVerified for backward compatibility
-    const userWithVerified = user ? {
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        message: 'The user associated with this token was not found in our system.'
+      });
+    }
+    
+    const userWithVerified = {
       ...user,
-      emailVerified: user.emailConfirmed
-    } : null;
+      emailVerified: user.emailVerified || false
+    };
 
     if (!userWithVerified) {
       return res.status(404).json({

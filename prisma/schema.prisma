@@ -12,7 +12,7 @@ model User {
   id             String     @id @default(uuid()) @db.Uuid
   email          String     @unique
   name           String?
-  password       String     @map("hashed_password") // Made non-nullable for email/password auth
+  password       String?    @map("hashed_password") // Nullable for OAuth users
   salt           String?    // For password hashing
   photoUrl       String?    @map("photo_url")
   googleId       String?    @unique @map("google_id") // Google's unique user ID

@@ -75,7 +75,7 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
     }
 
     // Save FCM token if provided and not already saved
-    if (fcmToken && (!user.fcmTokens || user.fcmTokens.length === 0)) {
+    if (fcmToken && user && (!user.fcmTokens || user.fcmTokens.length === 0)) {
       try {
         // First try to find if the token exists for any user
         const existingToken = await prisma.fCMToken.findFirst({
@@ -94,7 +94,9 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
               data: {
                 token: fcmToken,
                 userId: user.id,
-                deviceInfo: deviceInfo || 'mobile'
+                deviceInfo: deviceInfo || 'mobile',
+                createdAt: new Date(),
+                updatedAt: new Date()
               }
             });
           }
@@ -103,7 +105,9 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
             data: {
               token: fcmToken,
               userId: user.id,
-              deviceInfo: deviceInfo || 'mobile'
+              deviceInfo: deviceInfo || 'mobile',
+              createdAt: new Date(),
+              updatedAt: new Date()
             }
           });
         }
@@ -113,21 +117,27 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
       }
     }
 
+    // Ensure user has fcmTokens property
+    const userWithFcmTokens = {
+      ...user,
+      fcmTokens: user?.fcmTokens || []
+    };
+
     // Generate JWT token for the user
     const authToken = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role
+      userId: userWithFcmTokens.id,
+      email: userWithFcmTokens.email,
+      role: userWithFcmTokens.role
     });
 
     // Return user data without sensitive information
     const userData = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      photoUrl: user.photoUrl,
-      role: user.role,
-      provider: user.provider || 'email'
+      id: userWithFcmTokens.id,
+      email: userWithFcmTokens.email,
+      name: userWithFcmTokens.name,
+      photoUrl: userWithFcmTokens.photoUrl,
+      role: userWithFcmTokens.role,
+      provider: userWithFcmTokens.provider || 'email'
     };
 
     return res.json({
@@ -206,7 +216,7 @@ export const signUp = async (req: Request, res: Response) => {
         name: name || email.split('@')[0],
         provider: 'email',
         role: 'USER',
-        emailConfirmed: false, // Will be updated when email is verified
+        emailVerified: false, // Will be updated when email is verified
       },
     });
 
@@ -243,7 +253,7 @@ export const signUp = async (req: Request, res: Response) => {
           email: user.email,
           name: user.name,
           role: user.role,
-          emailVerified: user.emailConfirmed,
+          emailVerified: user.emailVerified,
         },
         token,
       },
@@ -307,7 +317,7 @@ export const signIn = async (req: Request, res: Response) => {
         email: true,
         name: true,
         role: true,
-        emailConfirmed: true,
+        emailVerified: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -371,7 +381,7 @@ export const signIn = async (req: Request, res: Response) => {
           email: user.email,
           name: user.name,
           role: user.role,
-          emailVerified: user.emailConfirmed,
+          emailVerified: user.emailVerified,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },
@@ -563,7 +573,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
       select: {
         id: true,
         email: true,
-        emailConfirmed: true,
+        emailVerified: true,
         name: true,
         provider: true,
       },
@@ -578,7 +588,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
     }
 
     // Check if email is verified in Supabase
-    let isEmailVerified = user.emailConfirmed;
+    let isEmailVerified = user.emailVerified;
     
     // If not verified in our DB, double check with Supabase
     if (!isEmailVerified) {
@@ -588,7 +598,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
           // Update our database if Supabase shows the email is confirmed
           await prisma.user.update({
             where: { id: user.id },
-            data: { emailConfirmed: true },
+            data: { emailVerified: true },
           });
           isEmailVerified = true;
         }
@@ -635,7 +645,7 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
       where: { email },
       select: { 
         id: true, 
-        emailConfirmed: true,
+        emailVerified: true,
         email: true,
       },
     });
@@ -649,7 +659,7 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
     }
 
     // Check if email is already confirmed
-    if (user.emailConfirmed) {
+    if (user.emailVerified) {
       return res.status(400).json({
         success: false,
         error: 'Email already verified',
@@ -674,7 +684,7 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
         // Update our database to reflect the confirmed status
         await prisma.user.update({
           where: { id: user.id },
-          data: { emailConfirmed: true },
+          data: { emailVerified: true },
         });
         
         return res.status(400).json({
