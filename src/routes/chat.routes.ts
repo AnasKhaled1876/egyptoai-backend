@@ -26,6 +26,6 @@ const router = Router();
 router.get("/titles", authenticateToken, getChatTitles);
 router.get("/:chatId", authenticateToken, getChatById);
 router.post("/", chatRateLimiter, streamChat);
-router.post("/transcribe", upload.single('audio'), transcribeAudio);
+// router.post("/transcribe", upload.single('audio'), transcribeAudio);
 
 export default router;
