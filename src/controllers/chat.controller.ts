@@ -127,6 +127,16 @@ export const streamChat = async (req: Request, res: Response) => {
 
 // Transcribe audio
 export const transcribeAudio = async (req: Request, res: Response) => {
+  console.log('transcribeAudio called');
+  console.log('req.file:', req.file);
+  if (req.file && req.file.path) {
+    try {
+      const exists = fs.existsSync(req.file.path);
+      console.log('File exists at upload path:', req.file.path, exists);
+    } catch (err) {
+      console.error('Error checking file existence:', err);
+    }
+  }
   if (!req.file || !req.file.path) {
     return res.status(400).json({ error: "Audio file is required." });
   }
@@ -134,10 +144,11 @@ export const transcribeAudio = async (req: Request, res: Response) => {
   let transcription = '';
   try {
     // Step 1: Transcribe the audio
+    console.log('About to transcribe file at:', filePath);
     transcription = await transcribeAudioWithWhisper(filePath);
   } catch (err) {
     fs.unlink(filePath, () => {});
-    console.error(err);
+    console.error('Error during transcription:', err);
     return res.status(500).json({ error: "Failed to transcribe audio." });
   } finally {
     // Clean up the uploaded file
