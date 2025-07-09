@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../utils/prisma.js";
 import { callGeminiStream } from "../services/gemini.service.js";
 import { callDeepSeekStream } from "../services/deepseek.service.js";
-import { transcribeAudioWithWhisper } from "@/services/whisper.service.js";
+import { transcribeAudioWithWhisper } from "../services/whisper.service.js";
 import fs from "fs";
 
 // Titles
