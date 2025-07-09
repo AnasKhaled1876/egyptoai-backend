@@ -9,6 +9,8 @@ import {
   removeFCMToken,
   handleGoogleSignIn,
   resendConfirmationEmail,
+  sendOTP,
+  verifyOTP,
 } from "../controllers/user.js";
 import { authenticateToken } from "../middlewares/auth.js";
 import { getProfile, updateProfile } from "../controllers/profile.js";
@@ -20,6 +22,8 @@ router.post("/signin", signIn);
 router.post("/google", handleGoogleSignIn);
 router.post("/check-email", checkEmailExists);
 router.post("/resend-confirmation", resendConfirmationEmail);
+router.post("/send-otp", sendOTP);
+router.post("/verify-otp", verifyOTP);
 
 // Protected routes (require authentication)
 router.post("/signout", authenticateToken, signOut);

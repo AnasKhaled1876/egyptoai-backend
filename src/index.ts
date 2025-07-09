@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env' });
 
+// Initialize Redis connection
+// import { initRedis } from "./utils/redis.js";
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
@@ -102,28 +104,86 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   });
 });
 
-// Start the server
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
+// Initialize Redis and start the server
+const startServer = async () => {
+  try {
+    // Initialize Redis connection
+    // await initRedis();
+    // console.log('Redis connected successfully');
+    
+    // Create HTTP server
+    const server = app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`Frontend URL: ${process.env.FRONTEND_URL || 'Not set'}`);
+      // console.log(`Redis URL: ${process.env.REDIS_URL || 'redis://localhost:6379'}`);
+    });
+
+    // Handle server errors
+    server.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.syscall !== 'listen') {
+        throw error;
+      }
+
+      // Handle specific listen errors with friendly messages
+      switch (error.code) {
+        case 'EACCES':
+          console.error(`Port ${PORT} requires elevated privileges`);
+          process.exit(1);
+          break;
+        case 'EADDRINUSE':
+          console.error(`Port ${PORT} is already in use`);
+          process.exit(1);
+          break;
+        default:
+          throw error;
+      }
+    });
+
+    // Handle graceful shutdown
+    const gracefulShutdown = () => {
+      console.log('Shutting down server...');
+      server.close(() => {
+        console.log('Server stopped');
+        process.exit(0);
+      });
+
+      // Force close server after 5 seconds
+      setTimeout(() => {
+        console.error('Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+      }, 5000);
+    };
+
+    // Handle termination signals
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+
+    return server;
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+// Start the application
+startServer().catch(error => {
+  console.error('Failed to start application:', error);
+  process.exit(1);
 });
-console.log(`🚀 Server is running on http://localhost:${PORT}`);
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (err: Error) => {
-  console.error('Unhandled Rejection:', err);
-  server.close(() => process.exit(1));
+process.on('unhandledRejection', (reason: Error | any, promise: Promise<any>) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Consider whether to exit here or continue
+  // process.exit(1);
 });
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (err: Error) => {
-  console.error('Uncaught Exception:', err);
-  server.close(() => process.exit(1));
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught Exception:', error);
+  // Consider whether to exit here or continue
+  // process.exit(1);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
+console.log('Process terminated');

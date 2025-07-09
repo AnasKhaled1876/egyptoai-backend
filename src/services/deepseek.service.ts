@@ -76,7 +76,7 @@ export async function callDeepSeekStream(
 
     for await (const chunk of stream) {
       const chunkString = chunk.toString('utf-8');
-      console.log('Received chunk:', chunkString);
+      // console.log('Received chunk:', chunkString);
 
       // DeepSeek probably sends NDJSON (new-line delimited JSON)
       const lines = chunkString.split('\n').filter((line: string) => line.trim() !== '');

@@ -2,6 +2,9 @@ import { Request, Response } from "express";
 import { supabase } from "../utils/supabase.js";
 import { prisma } from "../utils/prisma.js";
 import { generateToken } from "../utils/jwt.js";
+import { generateOTP, sendOTPEmail } from "../utils/email.js";
+import { addMinutes } from 'date-fns';
+import { redis, OTPData } from "../utils/redis.js";
 
 export const handleGoogleSignIn = async (req: Request, res: Response) => {
   try {
@@ -159,7 +162,7 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
 
 export const signUp = async (req: Request, res: Response) => {
   try {
-    const { email, password, name, fcmToken, deviceInfo = 'web' } = req.body;
+    const { email, password, name, fcmToken, deviceInfo = 'web', verificationToken } = req.body;
 
     // Validate input
     if (!email || !password) {
@@ -169,7 +172,29 @@ export const signUp = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if user already exists
+    // Check if verification token is valid
+    const storedOTP = await redis.getOTP(email);
+    if (!storedOTP || 
+        !storedOTP.verified || 
+        storedOTP.verificationToken !== verificationToken ||
+        storedOTP.purpose !== 'signup') {
+      return res.status(400).json({
+        success: false,
+        error: 'Email verification required. Please verify your email first.',
+      });
+    }
+
+    // Check if verification is still valid (e.g., within 30 minutes of verification)
+    const verificationExpiry = 30 * 60 * 1000; // 30 minutes in milliseconds
+    const verifiedAt = storedOTP.verifiedAt ? new Date(storedOTP.verifiedAt) : null;
+    if (!verifiedAt || Date.now() - verifiedAt.getTime() > verificationExpiry) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email verification has expired. Please verify your email again.',
+      });
+    }
+
+    // Check if user already exists (double-check)
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -216,9 +241,12 @@ export const signUp = async (req: Request, res: Response) => {
         name: name || email.split('@')[0],
         provider: 'email',
         role: 'USER',
-        emailVerified: false, // Will be updated when email is verified
+        emailVerified: true, // Mark as verified since we've already verified via OTP
       },
     });
+    
+    // Clean up the OTP after successful signup
+    await redis.deleteOTP(email);
 
     // Save FCM token if provided
     if (fcmToken) {
@@ -752,6 +780,153 @@ export const removeFCMToken = async (req: Request, res: Response) => {
   }
 };
 
+// OTP Verification using Redis
+// OTPData interface is now imported from redis.ts
+
+// Send OTP to email
+export const sendOTP = async (req: Request, res: Response) => {
+  try {
+    const { email, isSignUp = false } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required',
+      });
+    }
+
+    // If this is for signup, check if email already exists
+    if (isSignUp) {
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email already in use',
+        });
+      }
+    }
+
+
+    // Generate OTP
+    const otp = generateOTP();
+    const expiresAt = addMinutes(new Date(), 10); // OTP expires in 10 minutes
+
+    // Store OTP in Redis
+    const otpData: Omit<OTPData, 'email'> = {
+      otp,
+      expiresAt: expiresAt.getTime(), // Convert to timestamp for storage
+      verified: false,
+      purpose: isSignUp ? 'signup' : 'verification',
+      createdAt: Date.now(),
+    };
+    
+    const stored = await redis.setOTP(email, otpData);
+    if (!stored) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to store OTP',
+      });
+    }
+
+    // Send OTP via email
+    const emailSent = await sendOTPEmail(email, otp);
+
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to send OTP email',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully',
+    });
+  } catch (error) {
+    console.error('Error sending OTP:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+};
+
+// Verify OTP
+export const verifyOTP = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, isSignUp = false } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and OTP are required',
+      });
+    }
+
+    const storedOTP = await redis.getOTP(email);
+
+    // Check if OTP exists and is not expired
+    if (!storedOTP || new Date().getTime() > storedOTP.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired OTP',
+      });
+    }
+
+    // Verify OTP
+    if (storedOTP.otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid OTP',
+      });
+    }
+
+    // If this is for signup, check if the purpose matches
+    if (isSignUp && storedOTP.purpose !== 'signup') {
+      return res.status(400).json({
+        success: false,
+        error: 'This OTP is not valid for signup',
+      });
+    }
+
+    // Update OTP with verification details
+    const updatedOTP: OTPData = {
+      ...storedOTP,
+      verified: true,
+      verifiedAt: Date.now(),
+      verificationToken: Buffer.from(`${email}:${Date.now()}`).toString('base64')
+    };
+    
+    // Store the updated OTP data (all timestamps are already in milliseconds)
+    await redis.setOTP(email, {
+      ...updatedOTP,
+      expiresAt: updatedOTP.expiresAt,
+      verifiedAt: updatedOTP.verifiedAt,
+      createdAt: updatedOTP.createdAt
+    });
+    
+    const verificationToken = updatedOTP.verificationToken;
+
+    return res.status(200).json({
+      success: true,
+      message: 'OTP verified successfully',
+      data: {
+        verificationToken,
+        email,
+      },
+    });
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+};
+
 // Default export for all controller functions
 export default {
   handleGoogleSignIn,
@@ -764,4 +939,6 @@ export default {
   checkEmailExists,
   resendConfirmationEmail,
   removeFCMToken,
+  sendOTP,
+  verifyOTP,
 };
