@@ -1,4 +1,5 @@
 // src/services/callDeepSeek.ts
+import { DEFAULT_SYSTEM_PROMPT } from "../constants/prompts.js";
 import axios from "axios";
 import { Readable } from "stream";
 
@@ -22,7 +23,7 @@ export async function callDeepSeek(messages: DeepSeekMessage[]): Promise<string>
     // Add the system message at the start of the messages array
     messages.unshift({
       role: "system",
-      content: "You are EgyptoAI, a friendly Egyptian tour guide that speaks Egyptian Arabic slang but polite and also helps other with other things other than tourism."
+      content: DEFAULT_SYSTEM_PROMPT
     });
     const response = await axios.post(
       "https://api.deepseek.com/chat/completions",
@@ -53,7 +54,7 @@ export async function callDeepSeekStream(
   try {
     messages.unshift({
       role: "system",
-      content: "You are EgyptoAI, a friendly Egyptian tour guide that speaks Egyptian Arabic slang but polite and also helps other with other things other than tourism."
+      content: DEFAULT_SYSTEM_PROMPT
     });
 
     const response = await axios.post(
