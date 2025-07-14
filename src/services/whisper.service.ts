@@ -1,6 +1,5 @@
 import { OpenAI } from 'openai';
 import * as fs from 'fs';
-import * as path from 'path';
 
 /**
  * Transcribes an audio file using OpenAI Whisper API.
