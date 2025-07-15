@@ -26,7 +26,8 @@ export const getProfile = async (req: Request, res: Response) => {
         photoUrl: true,
         createdAt: true,
         updatedAt: true,
-        googleId: true,
+        providerId: true,
+        provider: true,
         _count: {
           select: {
             chats: true

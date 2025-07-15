@@ -7,7 +7,7 @@ import {
   checkEmailExists,
   getFCMTokens,
   removeFCMToken,
-  handleGoogleSignIn,
+  handleSocialSignIn,
   resendConfirmationEmail,
   sendOTP,
   verifyOTP,
@@ -19,7 +19,7 @@ const router = Router();
 // Public routes
 router.post("/signup", signUp);
 router.post("/signin", signIn);
-router.post("/google", handleGoogleSignIn);
+router.post("/social-sign", handleSocialSignIn);
 router.post("/check-email", checkEmailExists);
 router.post("/resend-confirmation", resendConfirmationEmail);
 router.post("/send-otp", sendOTP);

@@ -5,11 +5,18 @@ interface OTPData {
   otp: string;
   expiresAt: number; // Storing as timestamp for JSON serialization
   verified: boolean;
-  purpose?: 'signup' | 'verification' | 'password_reset';
+  purpose?: OTPPurpose;
   createdAt?: number;
   verifiedAt?: number;
   verificationToken?: string;
 }
+
+export enum OTPPurpose {
+  Signup = 'signup',
+  Verification = 'verification',
+  PasswordReset = 'password_reset',
+}
+
 
 class RedisClient {
   private client: ReturnType<typeof createClient>;
@@ -92,12 +99,23 @@ class RedisClient {
   // Store OTP data
   public async setOTP(email: string, data: Omit<OTPData, 'email'>): Promise<boolean> {
     try {
+      /**
+       * Calculates the TTL (time to live) in seconds from the current time
+       * until the OTP expires.
+       */
       const ttlInSeconds = Math.ceil((new Date(data.expiresAt).getTime() - Date.now()) / 1000);
+      console.log('Set Redis OTP email:', email);
+      console.log('Set Redis OTP data:', data);
+      console.log('Set Redis OTP TTL:', ttlInSeconds);
+      const normalizedEmail = email.toLowerCase();
+
       await this.client.setEx(
-        `otp:${email}`,
+        `otp:${normalizedEmail}`,
         ttlInSeconds,
         JSON.stringify(data)
       );
+
+      console.log('Set Redis OTP result:', true);
       return true;
     } catch (error) {
       console.error('Error setting OTP in Redis:', error);
@@ -108,11 +126,16 @@ class RedisClient {
   // Get OTP data
   public async getOTP(email: string): Promise<OTPData | null> {
     try {
-      const data = await this.client.get(`otp:${email}`);
+      console.log('Get Redis OTP email:', email);
+      const data = await this.client.get(`otp:${email.toLowerCase()}`);
+      console.log('Get Redis OTP data:', data);
       if (!data) return null;
       
       const parsed = JSON.parse(data);
       // Convert timestamps back to Date objects
+
+      console.log('data', data);
+      console.log('parsed', parsed);
       return {
         ...parsed,
         expiresAt: new Date(parsed.expiresAt),
@@ -128,7 +151,7 @@ class RedisClient {
   // Delete OTP data
   public async deleteOTP(email: string): Promise<boolean> {
     try {
-      await this.client.del(`otp:${email}`);
+      await this.client.del(`otp:${email.toLowerCase()}`);
       return true;
     } catch (error) {
       console.error('Error deleting OTP from Redis:', error);
