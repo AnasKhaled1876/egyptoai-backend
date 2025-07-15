@@ -36,9 +36,10 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Deploy via SSH
+      - name: Deploy via SSH with Docker login
         run: |
           ssh -o StrictHostKeyChecking=no root@95.217.217.35 << 'EOF'
+            docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/egyptoai-backend:latest
             docker stop egyptoai-backend || true
             docker rm egyptoai-backend || true
