@@ -12,19 +12,19 @@ model User {
   id                 String              @id @default(uuid()) @db.Uuid
   email              String              @unique
   name               String?
-  password           String?             @map("hashed_password") // Nullable for OAuth users
-  salt               String? // For password hashing
+  password           String?             @map("hashed_password")
+  salt               String?
   photoUrl           String?             @map("photo_url")
-  providerId         String?             @unique @map("provider_id") // Google's unique user ID
-  provider           String?             @default("email") // 'google', 'email', etc.
+  provider           String?             @default("email")
   role               UserRole            @default(USER)
   emailVerified      Boolean             @default(false) @map("email_verified")
   lastLoginAt        DateTime?           @map("last_login_at") @db.Timestamptz(6)
   createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
-  verificationTokens VerificationToken[]
-  fcmTokens          FCMToken[]
+  providerId         String?             @unique @map("provider_id")
   chats              Chat[]
+  fcmTokens          FCMToken[]
+  verificationTokens VerificationToken[]
 
   @@map("users")
 }
@@ -32,12 +32,12 @@ model User {
 model VerificationToken {
   id         String   @id @default(uuid()) @db.Uuid
   token      String   @unique
-  type       String // 'email_verification', 'password_reset', etc.
-  identifier String // Typically the user's email
+  type       String
+  identifier String
   expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String   @map("user_id") @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
   @@map("verification_tokens")
@@ -45,14 +45,13 @@ model VerificationToken {
 
 model FCMToken {
   id         String   @id @default(uuid()) @db.Uuid
-  token      String
+  token      String   @unique
   deviceInfo String?  @map("device_info")
   userId     String   @map("user_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([token], name: "fcm_token_unique")
   @@unique([userId, token], name: "user_fcm_tokens_user_id_token_key")
   @@map("fcm_tokens")
 }
@@ -81,12 +80,6 @@ model ChatMessage {
   @@map("chat_messages")
 }
 
-enum UserRole {
-  USER
-  ADMIN
-  MODERATOR
-}
-
 model QuickPrompt {
   id        String   @id @default(uuid()) @db.Uuid
   emoji     String   @default("")
@@ -95,4 +88,10 @@ model QuickPrompt {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("quick_prompts")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
 }
