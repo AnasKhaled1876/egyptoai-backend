@@ -4,9 +4,9 @@ import { prisma } from "../utils/prisma.js";
 import { generateToken } from "../utils/jwt.js";
 import { generateOTP, sendOTPEmail } from "../utils/email.js";
 import { addMinutes } from 'date-fns';
-import { redis, OTPData } from "../utils/redis.js";
+import { redis, OTPData, OTPPurpose } from "../utils/redis.js";
 
-export const handleGoogleSignIn = async (req: Request, res: Response) => {
+export const handleSocialSignIn = async (req: Request, res: Response) => {
   try {
     const { 
       email, 
@@ -14,13 +14,13 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
       photoUrl, 
       fcmToken, 
       deviceInfo = 'mobile',
-      googleId, // Google's unique user ID
-      token // Google ID token for verification if needed
+      providerId, // Provider's unique user ID E.g. Google's unique user ID
+      provider, // Provider name E.g. 'google', 'Apple', etc.
     } = req.body;
 
     if (!email) {
       return res.status(400).json({ 
-        success: false,
+        status: false,
         error: 'Email is required' 
       });
     }
@@ -44,7 +44,7 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
           email,
           name: name || email.split('@')[0],
           photoUrl: photoUrl || null,
-          provider: 'google',
+          provider: provider || 'email',
           role: 'USER',
           // Password is not required for OAuth users
         },
@@ -61,9 +61,9 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
         user = await prisma.user.update({
           where: { id: user.id },
           data: {
-            googleId: googleId || user.googleId,
+            providerId: providerId || user.providerId,
             photoUrl: photoUrl || user.photoUrl,
-            provider: 'google',
+            provider: provider || 'email',
             // Don't override name if it already exists
             name: user.name || name || email.split('@')[0],
           },
@@ -144,17 +144,17 @@ export const handleGoogleSignIn = async (req: Request, res: Response) => {
     };
 
     return res.json({
-      success: true,
+      status: true,
       token: authToken,
       user: userData
     });
 
   } catch (error) {
-    console.error('Google sign-in error:', error);
+    console.error('Social sign-in error:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return res.status(500).json({ 
-      success: false,
-      error: 'Failed to process Google sign-in',
+      status: false,
+      error: 'Failed to process social sign-in',
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
@@ -167,19 +167,24 @@ export const signUp = async (req: Request, res: Response) => {
     // Validate input
     if (!email || !password) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email and password are required',
       });
     }
 
+    
+
     // Check if verification token is valid
     const storedOTP = await redis.getOTP(email);
+    console.log('verificationToken', verificationToken);
+    console.log('storedOTP', storedOTP);
+    console.log('storedOTP token', storedOTP?.verificationToken);
     if (!storedOTP || 
         !storedOTP.verified || 
         storedOTP.verificationToken !== verificationToken ||
         storedOTP.purpose !== 'signup') {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email verification required. Please verify your email first.',
       });
     }
@@ -189,7 +194,7 @@ export const signUp = async (req: Request, res: Response) => {
     const verifiedAt = storedOTP.verifiedAt ? new Date(storedOTP.verifiedAt) : null;
     if (!verifiedAt || Date.now() - verifiedAt.getTime() > verificationExpiry) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email verification has expired. Please verify your email again.',
       });
     }
@@ -201,42 +206,14 @@ export const signUp = async (req: Request, res: Response) => {
 
     if (existingUser) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email already in use',
-      });
-    }
-
-    // Create user in Supabase Auth
-    const { data: authUser, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: process.env.SUPABASE_EMAIL_REDIRECT_URL || 'http://localhost:3000/auth/callback',
-        data: {
-          name: name || email.split('@')[0],
-        },
-      },
-    });
-
-    if (signUpError) {
-      console.error('Supabase signup error:', signUpError);
-      return res.status(400).json({
-        success: false,
-        error: signUpError.message || 'Failed to create user',
-      });
-    }
-
-    if (!authUser.user) {
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to create user',
       });
     }
 
     // Create user in our database
     const user = await prisma.user.create({
       data: {
-        id: authUser.user.id,
         email,
         name: name || email.split('@')[0],
         provider: 'email',
@@ -274,7 +251,7 @@ export const signUp = async (req: Request, res: Response) => {
     });
 
     return res.status(201).json({
-      success: true,
+      status: true,
       data: {
         user: {
           id: user.id,
@@ -285,7 +262,6 @@ export const signUp = async (req: Request, res: Response) => {
         },
         token,
       },
-      message: 'User registered successfully. Please check your email to verify your account.',
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -300,7 +276,7 @@ export const signIn = async (req: Request, res: Response) => {
     // Validate input
     if (!email || !password) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email and password are required',
       });
     }
@@ -317,14 +293,14 @@ export const signIn = async (req: Request, res: Response) => {
       // Handle specific error cases
       if (authError.message.toLowerCase().includes('invalid login credentials')) {
         return res.status(401).json({
-          success: false,
+          status: false,
           error: 'Invalid email or password',
         });
       }
       
       if (authError.message.toLowerCase().includes('email not confirmed')) {
         return res.status(403).json({
-          success: false,
+          status: false,
           error: 'Email not verified',
           message: 'Please verify your email before signing in.',
           requiresConfirmation: true
@@ -332,7 +308,7 @@ export const signIn = async (req: Request, res: Response) => {
       }
 
       return res.status(401).json({
-        success: false,
+        status: false,
         error: authError.message || 'Failed to sign in',
       });
     }
@@ -354,7 +330,7 @@ export const signIn = async (req: Request, res: Response) => {
     if (!user) {
       // This shouldn't happen if signup flow is working correctly
       return res.status(404).json({
-        success: false,
+        status: false,
         error: 'User not found',
         message: 'User not found in the database. Please sign up first.',
       });
@@ -364,7 +340,7 @@ export const signIn = async (req: Request, res: Response) => {
     // Check if email is verified in Supabase
     if (!authData.user.email_confirmed_at) {
       return res.status(403).json({
-        success: false,
+        status: false,
         error: 'Email not verified',
         message: 'Please verify your email before signing in.',
         requiresConfirmation: true
@@ -402,7 +378,7 @@ export const signIn = async (req: Request, res: Response) => {
 
     // Return user data and token
     return res.json({
-      success: true,
+      status: true,
       data: {
         user: {
           id: user.id,
@@ -430,7 +406,7 @@ export const signOut = async (req: Request, res: Response) => {
     // Validate user is authenticated
     if (!userId) {
       return res.status(401).json({
-        success: false,
+        status: false,
         error: 'Not authenticated',
         message: 'You must be logged in to sign out.',
       });
@@ -464,13 +440,13 @@ export const signOut = async (req: Request, res: Response) => {
     res.clearCookie('sb-refresh-token');
 
     return res.json({
-      success: true,
+      status: true,
       message: 'Signed out successfully',
     });
   } catch (error) {
     console.error('Sign out error:', error);
     return res.status(500).json({
-      success: false,
+      status: false,
       error: 'Internal server error',
       message: 'An error occurred while signing out',
     });
@@ -590,7 +566,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
     // Validate input
     if (!email || typeof email !== 'string') {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email is required and must be a string',
       });
     }
@@ -609,7 +585,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
 
     if (!user) {
       return res.json({
-        success: true,
+        status: true,
         exists: false,
         message: 'No account found with this email address.',
       });
@@ -637,7 +613,7 @@ export const checkEmailExists = async (req: Request, res: Response) => {
     }
 
     return res.json({
-      success: true,
+      status: true,
       exists: true,
       data: {
         email: user.email,
@@ -649,13 +625,20 @@ export const checkEmailExists = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Check email exists error:', error);
     return res.status(500).json({
-      success: false,
+      status: false,
       error: 'Internal server error',
       message: 'An error occurred while checking the email',
     });
   }
 };
 
+  /**
+   * Resend the confirmation email to a user if they haven't verified their email address yet.
+   * The status field is a boolean indicating the success of the operation.
+   * The message field is a string with a message to the user.
+   * If the email is already verified, the status is false and the message is a corresponding error.
+   * If there's an internal error, the status is false and the message is a generic error message.
+   */
 export const resendConfirmationEmail = async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
@@ -663,7 +646,7 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
     // Validate input
     if (!email) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email is required',
       });
     }
@@ -680,7 +663,7 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
 
     if (!user) {
       return res.status(404).json({
-        success: false,
+        status: false,
         error: 'User not found',
         message: 'No account found with this email address.',
       });
@@ -689,7 +672,7 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
     // Check if email is already confirmed
     if (user.emailVerified) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email already verified',
         message: 'This email has already been verified.',
       });
@@ -716,33 +699,41 @@ export const resendConfirmationEmail = async (req: Request, res: Response) => {
         });
         
         return res.status(400).json({
-          success: false,
+          status: false,
           error: 'Email already verified',
           message: 'This email has already been verified. You can now sign in.',
         });
       }
 
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Failed to resend confirmation email',
         message: supabaseError.message || 'An error occurred while sending the confirmation email',
       });
     }
 
     return res.json({
-      success: true,
+      status: true,
       message: 'Confirmation email has been resent. Please check your inbox.',
     });
   } catch (error) {
     console.error('Resend confirmation email error:', error);
     return res.status(500).json({
-      success: false,
+      status: false,
       error: 'Internal server error',
       message: 'An error occurred while processing your request',
     });
   }
 };
 
+/**
+ * @route DELETE /fcm-tokens/:tokenId
+ * @description Remove a specific FCM token for the authenticated user
+ * @throws {401} - If the user is not authenticated
+ * @throws {403} - If the token does not belong to the user
+ * @throws {404} - If the token is not found
+ * @throws {500} - For any internal server error
+ */
 export const removeFCMToken = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -773,7 +764,7 @@ export const removeFCMToken = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Remove FCM token error:', error);
     return res.status(500).json({ 
-      success: false,
+      status: false,
       error: 'Internal server error',
       message: 'An error occurred while removing the FCM token',
     });
@@ -819,7 +810,7 @@ export const sendOTP = async (req: Request, res: Response) => {
       otp,
       expiresAt: expiresAt.getTime(), // Convert to timestamp for storage
       verified: false,
-      purpose: isSignUp ? 'signup' : 'verification',
+      purpose: isSignUp ? OTPPurpose.Signup : OTPPurpose.Verification,
       createdAt: Date.now(),
     };
     
@@ -861,7 +852,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
 
     if (!email || !otp) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Email and OTP are required',
       });
     }
@@ -871,7 +862,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     // Check if OTP exists and is not expired
     if (!storedOTP || new Date().getTime() > storedOTP.expiresAt) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Invalid or expired OTP',
       });
     }
@@ -879,7 +870,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     // Verify OTP
     if (storedOTP.otp !== otp) {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'Invalid OTP',
       });
     }
@@ -887,7 +878,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     // If this is for signup, check if the purpose matches
     if (isSignUp && storedOTP.purpose !== 'signup') {
       return res.status(400).json({
-        success: false,
+        status: false,
         error: 'This OTP is not valid for signup',
       });
     }
@@ -911,7 +902,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     const verificationToken = updatedOTP.verificationToken;
 
     return res.status(200).json({
-      success: true,
+      status: true,
       message: 'OTP verified successfully',
       data: {
         verificationToken,
@@ -921,7 +912,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error verifying OTP:', error);
     return res.status(500).json({
-      success: false,
+      status: false,
       error: 'Internal server error',
     });
   }
@@ -929,7 +920,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
 
 // Default export for all controller functions
 export default {
-  handleGoogleSignIn,
+  handleGoogleSignIn: handleSocialSignIn,
   signUp,
   signIn,
   signOut,

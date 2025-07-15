@@ -14,6 +14,7 @@ import chatRoutes from "./routes/chat.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import quickPromptsRoutes from "./routes/quickPrompts.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
+import { initRedis } from "./utils/redis.js";
 
 // Initialize Express app
 const app = express();
@@ -108,8 +109,8 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 const startServer = async () => {
   try {
     // Initialize Redis connection
-    // await initRedis();
-    // console.log('Redis connected successfully');
+    await initRedis();
+    console.log('Redis connected successfully');
     
     // Create HTTP server
     const server = app.listen(PORT, () => {
