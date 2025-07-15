@@ -1,8 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env' });
 
-// Initialize Redis connection
-// import { initRedis } from "./utils/redis.js";
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
@@ -14,6 +12,7 @@ import chatRoutes from "./routes/chat.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import quickPromptsRoutes from "./routes/quickPrompts.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
+// Initialize Redis connection
 import { initRedis } from "./utils/redis.js";
 
 // Initialize Express app
