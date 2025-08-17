@@ -35,14 +35,12 @@ export const getCountries = async (req: Request, res: Response): Promise<Respons
     
     return res.status(200).json({
       status: true,
-      data: {
-        countries,
-        pagination: {
-          total,
-          page: pageNum,
-          limit: limitNum,
-          totalPages: Math.ceil(total / limitNum)
-        }
+      data: countries,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
       }
     });
   } catch (error) {
