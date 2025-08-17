@@ -4,75 +4,44 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-type Country = {
-  id: string;
-  code: string;
-  name: string;
-  flagUrl: string;
-  language: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
+// Using Prisma generated types
+import { Country } from '@prisma/client';
 
-// In-memory store (replace with database in production)
-let countries: Country[] = [
-  { 
-    id: '1', 
-    code: 'US', 
-    name: 'United States', 
-    flagUrl: 'https://flagcdn.com/w320/us.png', 
-    language: 'English',
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  { 
-    id: '2',
-    code: 'GB', 
-    name: 'United Kingdom', 
-    flagUrl: 'https://flagcdn.com/w320/gb.png', 
-    language: 'English',
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  { 
-    id: '3',
-    code: 'EG', 
-    name: 'Egypt', 
-    flagUrl: 'https://flagcdn.com/w320/eg.png', 
-    language: 'Arabic',
-    createdAt: new Date(),
-    updatedAt: new Date()
-  },
-  // Add more countries as needed
-];
+type CountryCreateInput = Omit<Country, 'id' | 'createdAt' | 'updatedAt'>;
+type CountryUpdateInput = Partial<CountryCreateInput>;
 
 /**
  * @route GET /api/countries
  * @description Get all available countries with pagination
  */
-export const getCountries = async (req: Request, res: Response) => {
+export const getCountries = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { page = '1', limit = '10' } = req.query;
-    const pageNum = parseInt(page as string, 10) || 1;
-    const limitNum = parseInt(limit as string, 10) || 10;
-    const startIndex = (pageNum - 1) * limitNum;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
     
-    // Sort countries alphabetically by name
-    const sortedCountries = [...countries].sort((a, b) => 
-      a.name.localeCompare(b.name)
-    );
+    // Get total count of countries for pagination
+    const total = await prisma.country.count();
     
-    const paginatedCountries = sortedCountries.slice(startIndex, startIndex + limitNum);
+    // Fetch paginated countries ordered by name
+    const countries = await prisma.country.findMany({
+      orderBy: {
+        name: 'asc'
+      },
+      skip,
+      take: limitNum
+    });
     
     return res.status(200).json({
       status: true,
       data: {
-        countries: paginatedCountries,
+        countries,
         pagination: {
-          total: countries.length,
+          total,
           page: pageNum,
           limit: limitNum,
-          totalPages: Math.ceil(countries.length / limitNum)
+          totalPages: Math.ceil(total / limitNum)
         }
       }
     });
@@ -87,19 +56,21 @@ export const getCountries = async (req: Request, res: Response) => {
 };
 
 /**
- * @route GET /api/countries/:id
- * @description Get country details by ID
+ * @route GET /api/countries/:code
+ * @description Get country details by code
  */
-export const getCountryById = async (req: Request, res: Response) => {
+export const getCountryByCode = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { id } = req.params;
-    const country = countries.find(c => c.id === id);
+    const { code } = req.params;
+    const country = await prisma.country.findUnique({
+      where: { code: code.toUpperCase() }
+    });
 
     if (!country) {
       return res.status(404).json({
         status: false,
-        error: 'Country not found',
-        message: 'No country found with the provided ID'
+        error: 'Not Found',
+        message: 'Country not found'
       });
     }
 
@@ -121,7 +92,7 @@ export const getCountryById = async (req: Request, res: Response) => {
  * @route POST /api/countries
  * @description Create a new country
  */
-export const createCountry = async (req: Request, res: Response) => {
+export const createCountry = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { code, name, flagUrl, language } = req.body;
 
@@ -135,7 +106,10 @@ export const createCountry = async (req: Request, res: Response) => {
     }
 
     // Check if country code already exists
-    const existingCountry = countries.find(c => c.code === code);
+    const existingCountry = await prisma.country.findUnique({
+      where: { code }
+    });
+    
     if (existingCountry) {
       return res.status(409).json({
         status: false,
@@ -144,17 +118,14 @@ export const createCountry = async (req: Request, res: Response) => {
       });
     }
 
-    const newCountry: Country = {
-      id: uuidv4(),
-      code,
-      name,
-      flagUrl,
-      language,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    countries.push(newCountry);
+    const newCountry = await prisma.country.create({
+      data: {
+        code,
+        name,
+        flagUrl,
+        language
+      }
+    });
 
     return res.status(201).json({
       status: true,
@@ -175,42 +146,48 @@ export const createCountry = async (req: Request, res: Response) => {
  * @route PUT /api/countries/:id
  * @description Update an existing country
  */
-export const updateCountry = async (req: Request, res: Response) => {
+export const updateCountry = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
     const { code, name, flagUrl, language } = req.body;
 
-    const countryIndex = countries.findIndex(c => c.id === id);
-    if (countryIndex === -1) {
+    // Check if country exists
+    const existingCountry = await prisma.country.findUnique({
+      where: { id }
+    });
+
+    if (!existingCountry) {
       return res.status(404).json({
         status: false,
-        error: 'Country not found',
-        message: 'No country found with the provided ID'
+        error: 'Not Found',
+        message: 'Country not found'
       });
     }
 
-    // Check if the new code is already taken by another country
-    if (code && code !== countries[countryIndex].code) {
-      const codeExists = countries.some(c => c.code === code && c.id !== id);
+    // Check if code is being updated and already exists
+    if (code && code !== existingCountry.code) {
+      const codeExists = await prisma.country.findUnique({
+        where: { code }
+      });
+      
       if (codeExists) {
         return res.status(409).json({
           status: false,
           error: 'Duplicate country code',
-          message: 'Another country with this code already exists'
+          message: 'A country with this code already exists'
         });
       }
     }
 
-    const updatedCountry = {
-      ...countries[countryIndex],
-      code: code || countries[countryIndex].code,
-      name: name || countries[countryIndex].name,
-      flagUrl: flagUrl || countries[countryIndex].flagUrl,
-      language: language || countries[countryIndex].language,
-      updatedAt: new Date()
-    };
-
-    countries[countryIndex] = updatedCountry;
+    const updatedCountry = await prisma.country.update({
+      where: { id },
+      data: {
+        code,
+        name,
+        flagUrl,
+        language
+      }
+    });
 
     return res.status(200).json({
       status: true,
@@ -231,7 +208,7 @@ export const updateCountry = async (req: Request, res: Response) => {
  * @route DELETE /api/countries/:id
  * @description Delete a country
  */
-export const deleteCountry = async (req: Request, res: Response) => {
+export const deleteCountry = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
     
@@ -261,7 +238,37 @@ export const deleteCountry = async (req: Request, res: Response) => {
   }
 };
 
-export const bulkCreateCountries = async (req: Request, res: Response) => {
+// Add getCountryById for backward compatibility
+export const getCountryById = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { id } = req.params;
+    const country = await prisma.country.findUnique({
+      where: { id }
+    });
+
+    if (!country) {
+      return res.status(404).json({
+        status: false,
+        error: 'Not Found',
+        message: 'Country not found'
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      data: { country }
+    });
+  } catch (error) {
+    console.error('Error fetching country by ID:', error);
+    return res.status(500).json({
+      status: false,
+      error: 'Failed to fetch country',
+      message: error instanceof Error ? error.message : 'An unknown error occurred'
+    });
+  }
+};
+
+export const bulkCreateCountries = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { countries: countriesData } = req.body;
 
@@ -275,7 +282,7 @@ export const bulkCreateCountries = async (req: Request, res: Response) => {
     }
 
     // Validate each country in the array
-    const invalidCountries = countriesData.filter(country => 
+    const invalidCountries = countriesData.filter((country: any) => 
       !country.code || !country.name || !country.flagUrl || !country.language
     );
 
@@ -289,8 +296,8 @@ export const bulkCreateCountries = async (req: Request, res: Response) => {
     }
 
     // Check for duplicate codes in the request
-    const codes = countriesData.map(c => c.code);
-    const duplicateCodes = codes.filter((code, index) => codes.indexOf(code) !== index);
+    const codes = countriesData.map((c: any) => c.code);
+    const duplicateCodes = codes.filter((code: string, index: number) => codes.indexOf(code) !== index);
     
     if (duplicateCodes.length > 0) {
       return res.status(400).json({
@@ -313,8 +320,8 @@ export const bulkCreateCountries = async (req: Request, res: Response) => {
       }
     });
 
-    const existingCodes = existingCountries.map(c => c.code);
-    const newCountries = countriesData.filter(c => !existingCodes.includes(c.code));
+    const existingCodes = existingCountries.map((c: { code: string }) => c.code);
+    const newCountries = countriesData.filter((c: any) => !existingCodes.includes(c.code));
 
     if (newCountries.length === 0) {
       return res.status(409).json({
@@ -327,7 +334,7 @@ export const bulkCreateCountries = async (req: Request, res: Response) => {
 
     // Create new countries
     const createdCountries = await prisma.$transaction(
-      newCountries.map(country => 
+      newCountries.map((country: any) => 
         prisma.country.create({
           data: country
         })

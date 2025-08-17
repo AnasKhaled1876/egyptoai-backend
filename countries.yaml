@@ -14,128 +14,102 @@ tags:
     description: Country management endpoints
 
 paths:
-  /countries:
-    get:
-      summary: Get all countries with pagination
-      tags: [Countries]
-      parameters:
-        - $ref: '#/components/parameters/page'
-        - $ref: '#/components/parameters/limit'
-      responses:
-        '200':
-          description: List of countries
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CountriesListResponse'
-    
+  /countries/bulk:
     post:
-      summary: Create a new country
+      summary: Create multiple countries at once
+      description: Creates multiple countries in a single request. Skips any countries that already exist.
       tags: [Countries]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateCountryInput'
+              type: object
+              required:
+                - countries
+              properties:
+                countries:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    $ref: '#/components/schemas/CreateCountryInput'
       responses:
         '201':
-          description: Country created successfully
+          description: Countries created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CountryResponse'
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: integer
+                        description: Number of countries created
+                        example: 3
+                      skipped:
+                        type: integer
+                        description: Number of countries skipped (already exist)
+                        example: 2
+                      countries:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Country'
+                  message:
+                    type: string
+                    example: "Countries created successfully"
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Bad Request - Invalid input
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - type: object
+                    properties:
+                      status:
+                        type: boolean
+                        example: false
+                      error:
+                        type: string
+                        example: "Validation Error"
+                      message:
+                        type: string
+                        example: "Each country must have code, name, flagUrl, and language"
+                      invalidEntries:
+                        type: array
+                        items:
+                          type: object
         '409':
-          $ref: '#/components/responses/Conflict'
-
-  /countries/{id}:
-    get:
-      summary: Get country by ID
-      tags: [Countries]
-      parameters:
-        - $ref: '#/components/parameters/id'
-      responses:
-        '200':
-          description: Country details
+          description: Conflict - All countries already exist
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CountryResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-    
-    put:
-      summary: Update a country
-      tags: [Countries]
-      parameters:
-        - $ref: '#/components/parameters/id'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateCountryInput'
-      responses:
-        '200':
-          description: Country updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CountryResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-    
-    delete:
-      summary: Delete a country
-      tags: [Countries]
-      parameters:
-        - $ref: '#/components/parameters/id'
-      responses:
-        '200':
-          description: Country deleted successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeleteResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Conflict"
+                  message:
+                    type: string
+                    example: "All countries already exist"
+                  existingCodes:
+                    type: array
+                    items:
+                      type: string
+                      example: "US"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
-  parameters:
-    id:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-      description: Country ID
-    page:
-      name: page
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 1
-        minimum: 1
-      description: Page number
-    limit:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 10
-        minimum: 1
-        maximum: 100
-      description: Number of items per page
-
   schemas:
     Country:
       type: object
@@ -166,35 +140,7 @@ components:
         updatedAt:
           type: string
           format: date-time
-    
-    CountryResponse:
-      type: object
-      properties:
-        status:
-          type: boolean
-          example: true
-        data:
-          type: object
-          properties:
-            country:
-              $ref: '#/components/schemas/Country'
-    
-    CountriesListResponse:
-      type: object
-      properties:
-        status:
-          type: boolean
-          example: true
-        data:
-          type: object
-          properties:
-            countries:
-              type: array
-              items:
-                $ref: '#/components/schemas/Country'
-            pagination:
-              $ref: '#/components/schemas/Pagination'
-    
+
     CreateCountryInput:
       type: object
       required:
@@ -218,108 +164,28 @@ components:
         language:
           type: string
           example: "English"
-    
-    UpdateCountryInput:
-      type: object
-      properties:
-        code:
-          type: string
-          minLength: 2
-          maxLength: 2
-          example: "US"
-          description: ISO 3166-1 alpha-2 country code
-        name:
-          type: string
-          example: "United States of America"
-        flagUrl:
-          type: string
-          format: uri
-          example: "https://flagcdn.com/w320/us.png"
-        language:
-          type: string
-          example: "English, Spanish"
-    
-    Pagination:
-      type: object
-      properties:
-        total:
-          type: integer
-          example: 100
-        page:
-          type: integer
-          example: 1
-        limit:
-          type: integer
-          example: 10
-        totalPages:
-          type: integer
-          example: 10
-    
-    DeleteResponse:
+
+    ErrorResponse:
       type: object
       properties:
         status:
           type: boolean
-          example: true
-        data:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              example: "123e4567-e89b-12d3-a456-426614174000"
+          example: false
+        error:
+          type: string
+          example: "Error Type"
         message:
           type: string
-          example: "Country deleted successfully"
-  
+          example: "Error message describing what went wrong"
+
   responses:
-    BadRequest:
-      description: Bad Request - Invalid input
+    InternalServerError:
+      description: Internal Server Error
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              status:
-                type: boolean
-                example: false
-              error:
-                type: string
-                example: "Validation Error"
-              message:
-                type: string
-                example: "Invalid input data"
-    
-    NotFound:
-      description: Not Found - Resource not found
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              status:
-                type: boolean
-                example: false
-              error:
-                type: string
-                example: "Not Found"
-              message:
-                type: string
-                example: "Country not found"
-    
-    Conflict:
-      description: Conflict - Resource already exists
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              status:
-                type: boolean
-                example: false
-              error:
-                type: string
-                example: "Conflict"
-              message:
-                type: string
-                example: "Country with this code already exists"
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: false
+            error: "Internal Server Error"
+            message: "An unexpected error occurred"
