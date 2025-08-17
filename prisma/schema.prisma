@@ -95,3 +95,17 @@ enum UserRole {
   ADMIN
   MODERATOR
 }
+
+model Country {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(2)
+  name      String   @db.VarChar(100)
+  flagUrl   String   @map("flag_url") @db.VarChar(255)
+  language  String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("countries")
+  @@index([code])
+  @@index([name])
+}
