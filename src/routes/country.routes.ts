@@ -4,7 +4,8 @@ import {
   getCountryById, 
   createCountry, 
   updateCountry, 
-  deleteCountry 
+  deleteCountry,
+  bulkCreateCountries 
 } from '../controllers/country.controller.js';
 
 const router = Router();
@@ -105,6 +106,77 @@ router.get('/:id', getCountryById);
  *         description: Country with this code already exists
  */
 router.post('/', createCountry);
+
+/**
+ * @swagger
+ * /api/countries/bulk:
+ *   post:
+ *     summary: Create multiple countries at once
+ *     tags: [Countries]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - countries
+ *             properties:
+ *               countries:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/CreateCountryInput'
+ *     responses:
+ *       201:
+ *         description: Countries created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     created:
+ *                       type: integer
+ *                       description: Number of countries created
+ *                     skipped:
+ *                       type: integer
+ *                       description: Number of countries skipped (already exist)
+ *                     countries:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/Country'
+ *                 message:
+ *                   type: string
+ *                   example: "Countries created successfully"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       409:
+ *         description: All countries already exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Conflict"
+ *                 message:
+ *                   type: string
+ *                   example: "All countries already exist"
+ *                 existingCodes:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ */
+router.post('/bulk', bulkCreateCountries);
 
 /**
  * @swagger

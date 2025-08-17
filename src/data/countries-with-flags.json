@@ -1,0 +1,62 @@
+[
+  {
+    "code": "US",
+    "name": "United States",
+    "flagUrl": "https://flagcdn.com/w320/us.png",
+    "language": "English"
+  },
+  {
+    "code": "GB",
+    "name": "United Kingdom",
+    "flagUrl": "https://flagcdn.com/w320/gb.png",
+    "language": "English"
+  },
+  {
+    "code": "FR",
+    "name": "France",
+    "flagUrl": "https://flagcdn.com/w320/fr.png",
+    "language": "French"
+  },
+  {
+    "code": "DE",
+    "name": "Germany",
+    "flagUrl": "https://flagcdn.com/w320/de.png",
+    "language": "German"
+  },
+  {
+    "code": "JP",
+    "name": "Japan",
+    "flagUrl": "https://flagcdn.com/w320/jp.png",
+    "language": "Japanese"
+  },
+  {
+    "code": "CN",
+    "name": "China",
+    "flagUrl": "https://flagcdn.com/w320/cn.png",
+    "language": "Chinese"
+  },
+  {
+    "code": "IN",
+    "name": "India",
+    "flagUrl": "https://flagcdn.com/w320/in.png",
+    "language": "Hindi, English"
+  },
+  {
+    "code": "BR",
+    "name": "Brazil",
+    "flagUrl": "https://flagcdn.com/w320/br.png",
+    "language": "Portuguese"
+  },
+  {
+    "code": "EG",
+    "name": "Egypt",
+    "flagUrl": "https://flagcdn.com/w320/eg.png",
+    "language": "Arabic"
+  },
+  {
+    "code": "ZA",
+    "name": "South Africa",
+    "flagUrl": "https://flagcdn.com/w320/za.png",
+    "language": "Afrikaans, English, Zulu, Xhosa"
+  }
+]

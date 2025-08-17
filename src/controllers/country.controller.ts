@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 type Country = {
   id: string;
@@ -231,28 +234,120 @@ export const updateCountry = async (req: Request, res: Response) => {
 export const deleteCountry = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const countryIndex = countries.findIndex(c => c.id === id);
-
-    if (countryIndex === -1) {
-      return res.status(404).json({
-        status: false,
-        error: 'Country not found',
-        message: 'No country found with the provided ID'
-      });
-    }
-
-    const [deletedCountry] = countries.splice(countryIndex, 1);
+    
+    const country = await prisma.country.delete({
+      where: { id }
+    });
 
     return res.status(200).json({
       status: true,
-      data: { id: deletedCountry.id },
+      data: { id: country.id },
       message: 'Country deleted successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting country:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        status: false,
+        error: 'Not Found',
+        message: 'Country not found'
+      });
+    }
     return res.status(500).json({
       status: false,
       error: 'Failed to delete country',
+      message: error instanceof Error ? error.message : 'An unknown error occurred'
+    });
+  }
+};
+
+export const bulkCreateCountries = async (req: Request, res: Response) => {
+  try {
+    const { countries: countriesData } = req.body;
+
+    // Validate input
+    if (!Array.isArray(countriesData) || countriesData.length === 0) {
+      return res.status(400).json({
+        status: false,
+        error: 'Invalid input',
+        message: 'Expected an array of countries'
+      });
+    }
+
+    // Validate each country in the array
+    const invalidCountries = countriesData.filter(country => 
+      !country.code || !country.name || !country.flagUrl || !country.language
+    );
+
+    if (invalidCountries.length > 0) {
+      return res.status(400).json({
+        status: false,
+        error: 'Validation Error',
+        message: 'Each country must have code, name, flagUrl, and language',
+        invalidEntries: invalidCountries
+      });
+    }
+
+    // Check for duplicate codes in the request
+    const codes = countriesData.map(c => c.code);
+    const duplicateCodes = codes.filter((code, index) => codes.indexOf(code) !== index);
+    
+    if (duplicateCodes.length > 0) {
+      return res.status(400).json({
+        status: false,
+        error: 'Duplicate Codes',
+        message: 'Duplicate country codes found in the request',
+        duplicateCodes: [...new Set(duplicateCodes)]
+      });
+    }
+
+    // Check which countries already exist
+    const existingCountries = await prisma.country.findMany({
+      where: {
+        code: {
+          in: codes
+        }
+      },
+      select: {
+        code: true
+      }
+    });
+
+    const existingCodes = existingCountries.map(c => c.code);
+    const newCountries = countriesData.filter(c => !existingCodes.includes(c.code));
+
+    if (newCountries.length === 0) {
+      return res.status(409).json({
+        status: false,
+        error: 'Conflict',
+        message: 'All countries already exist',
+        existingCodes
+      });
+    }
+
+    // Create new countries
+    const createdCountries = await prisma.$transaction(
+      newCountries.map(country => 
+        prisma.country.create({
+          data: country
+        })
+      )
+    );
+
+    return res.status(201).json({
+      status: true,
+      data: {
+        created: createdCountries.length,
+        skipped: countriesData.length - newCountries.length,
+        countries: createdCountries
+      },
+      message: 'Countries created successfully'
+    });
+  } catch (error) {
+    console.error('Error bulk creating countries:', error);
+    return res.status(500).json({
+      status: false,
+      error: 'Failed to create countries',
       message: error instanceof Error ? error.message : 'An unknown error occurred'
     });
   }
