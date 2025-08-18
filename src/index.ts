@@ -13,6 +13,7 @@ import authRoutes from "./routes/auth.routes.js";
 import quickPromptsRoutes from "./routes/quickPrompts.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
 import countryRoutes from "./routes/country.routes.js";
+import legalRoutes from "./routes/legal.routes.js";
 // Initialize Redis connection
 import { initRedis } from "./utils/redis.js";
 
@@ -86,6 +87,10 @@ app.use("/api/profile", profileRoutes);
 
 app.use("/api/quick-prompts", quickPromptsRoutes);
 app.use("/api/countries", countryRoutes);
+app.use('/legal', legalRoutes);
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, '../../public')));
 
 // Health check endpoint
 app.get("/health", (_req, res) => {
